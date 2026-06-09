@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EMA Scanner</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg:       #0d1117;
+      --surface:  #161b22;
+      --border:   #30363d;
+      --border2:  #21262d;
+      --muted:    #8b949e;
+      --text:     #e6edf3;
+      --accent:   #58a6ff;
+      --pos:      #3fb950;
+      --neg:      #f85149;
+      --warn:     #d29922;
+      --sidebar-w: 220px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-size: 0.875rem; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      position: fixed; left: 0; top: 0; bottom: 0;
+      width: var(--sidebar-w);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow-y: auto; z-index: 100;
+    }
+    .sidebar-logo {
+      padding: 20px 18px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-logo .brand { font-weight: 700; font-size: 0.95rem; color: var(--text); }
+    .sidebar-logo .sub   { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+    .nav-group { padding: 12px 0 4px; }
+    .nav-group-label {
+      font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--muted);
+      padding: 0 18px 6px;
+    }
+    .nav-link-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 7px 18px; color: var(--muted);
+      cursor: pointer; border-radius: 0;
+      transition: color .15s, background .15s;
+      border-left: 2px solid transparent;
+      font-size: 0.85rem;
+      user-select: none;
+    }
+    .nav-link-item:hover  { color: var(--text); background: rgba(255,255,255,.04); }
+    .nav-link-item.active { color: var(--text); background: rgba(88,166,255,.1); border-left-color: var(--accent); }
+    .nav-link-item i { width: 16px; text-align: center; }
+    .sidebar-footer {
+      margin-top: auto; padding: 14px 18px;
+      border-top: 1px solid var(--border);
+      font-size: 0.72rem; color: var(--muted);
+    }
+    #last-update { display: block; }
+
+    /* ── Mobile header ── */
+    .mobile-header {
+      display: none;
+      position: fixed; top: 0; left: 0; right: 0;
+      height: 52px; background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      align-items: center; padding: 0 16px;
+      z-index: 200; gap: 12px;
+    }
+    .overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.6); z-index: 90;
+    }
+
+    /* ── Main content ── */
+    .main {
+      margin-left: var(--sidebar-w);
+      min-height: 100vh;
+      padding: 28px 28px 40px;
+    }
+    .section { display: none; }
+    .section.active { display: block; }
+
+    /* ── Components ── */
+    .page-title {
+      font-size: 1rem; font-weight: 700; margin-bottom: 20px;
+      padding-bottom: 12px; border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+    .card-s {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 18px;
+    }
+    .stat-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 5px; }
+    .stat-num   { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
+    .stat-sub   { font-size: 0.78rem; margin-top: 3px; color: var(--muted); }
+    .pos  { color: var(--pos) !important; }
+    .neg  { color: var(--neg) !important; }
+    .neu  { color: var(--muted) !important; }
+    .warn { color: var(--warn) !important; }
+
+    .badge-long  { background: rgba(63,185,80,.15);  color: var(--pos); padding: 2px 9px; border-radius: 4px; font-size:.78rem; }
+    .badge-short { background: rgba(248,81,73,.15);  color: var(--neg); padding: 2px 9px; border-radius: 4px; font-size:.78rem; }
+    .badge-sl    { background: rgba(248,81,73,.15);  color: var(--neg); padding: 2px 7px; border-radius: 4px; font-size:.75rem; }
+    .badge-tp1   { background: rgba(210,153,34,.15); color: var(--warn); padding: 2px 7px; border-radius: 4px; font-size:.75rem; }
+    .badge-tp2   { background: rgba(63,185,80,.15);  color: var(--pos); padding: 2px 7px; border-radius: 4px; font-size:.75rem; }
+    .badge-end   { background: rgba(139,148,158,.15);color: var(--muted); padding: 2px 7px; border-radius: 4px; font-size:.75rem; }
+
+    .table { --bs-table-bg: transparent; font-size: 0.83rem; }
+    .table th { color: var(--muted); font-weight: 500; font-size: .72rem; text-transform: uppercase; letter-spacing:.04em; border-color: var(--border); }
+    .table td { border-color: var(--border2); vertical-align: middle; }
+    .table tbody tr:hover td { background: rgba(255,255,255,.025); }
+
+    .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+    /* Scanner button */
+    .scan-spinning .scan-label { display: none; }
+    .scan-spin { display: none; }
+    .scan-spinning .scan-spin { display: inline-flex; align-items: center; gap: 6px; }
+
+    /* Strategy blocks */
+    .step-block {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; padding: 14px 16px;
+    }
+    .step-num {
+      background: var(--accent); color: #000;
+      font-size: .72rem; font-weight: 700;
+      padding: 2px 8px; border-radius: 3px;
+    }
+    code { color: #79c0ff; background: rgba(121,192,255,.1); padding: 1px 5px; border-radius: 3px; }
+
+    /* Equity chart */
+    #equityChart { max-height: 210px; }
+
+    /* Scrollable table containers */
+    .table-scroll { max-height: 520px; overflow-y: auto; }
+
+    @media (max-width: 768px) {
+      .sidebar { transform: translateX(-100%); transition: transform .25s; }
+      .sidebar.open { transform: translateX(0); }
+      .overlay.open { display: block; }
+      .mobile-header { display: flex; }
+      .main { margin-left: 0; padding: 72px 16px 32px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Mobile Header ── -->
+<div class="mobile-header">
+  <button class="btn btn-sm btn-outline-secondary" onclick="toggleSidebar()">
+    <i class="fas fa-bars"></i>
+  </button>
+  <span style="font-weight:700; font-size:.9rem;">EMA Scanner</span>
+</div>
+<div class="overlay" id="overlay" onclick="toggleSidebar()"></div>
+
+<!-- ── Sidebar ── -->
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <div class="brand"><i class="fas fa-chart-line me-2" style="color:var(--accent)"></i>EMA Scanner</div>
+    <div class="sub">Convergence Bot Dashboard</div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-label">監控</div>
+    <div class="nav-link-item active" onclick="show('overview',this)">
+      <i class="fas fa-gauge-high"></i> 總覽
+    </div>
+    <div class="nav-link-item" onclick="show('positions',this)">
+      <i class="fas fa-layer-group"></i> 持倉中
+      <span class="ms-auto badge bg-primary rounded-pill" id="nav-badge-pos" style="display:none"></span>
+    </div>
+    <div class="nav-link-item" onclick="show('history',this)">
+      <i class="fas fa-clock-rotate-left"></i> 交易紀錄
+    </div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-label">工具</div>
+    <div class="nav-link-item" onclick="show('scanner',this)">
+      <i class="fas fa-magnifying-glass-chart"></i> 掃描 &amp; 訊號
+    </div>
+    <div class="nav-link-item" onclick="show('backtest',this)">
+      <i class="fas fa-flask"></i> 回測
+    </div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-label">參考</div>
+    <div class="nav-link-item" onclick="show('strategy',this)">
+      <i class="fas fa-book-open"></i> 策略說明
+    </div>
+  </div>
+
+  <div class="sidebar-footer">
+    <span id="last-update">—</span>
+    <button class="btn btn-outline-secondary btn-sm mt-2 w-100" onclick="loadAll()">
+      <i class="fas fa-rotate me-1"></i>重新整理
+    </button>
+  </div>
+</nav>
+
+<!-- ══════════════════════ MAIN ══════════════════════ -->
+<main class="main">
+
+  <!-- ①  總覽 ─────────────────────────────────────── -->
+  <div class="section active" id="sec-overview">
+    <div class="page-title"><i class="fas fa-gauge-high me-2" style="color:var(--accent)"></i>總覽</div>
+
+    <!-- Stat cards -->
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-md-3">
+        <div class="card-s h-100">
+          <div class="stat-label"><i class="fas fa-wallet me-1"></i>帳戶餘額</div>
+          <div class="stat-num" id="s-balance">—</div>
+          <div class="stat-sub" id="s-return">—</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card-s h-100">
+          <div class="stat-label"><i class="fas fa-bullseye me-1"></i>勝率</div>
+          <div class="stat-num" id="s-winrate">—</div>
+          <div class="stat-sub" id="s-wl">—</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card-s h-100">
+          <div class="stat-label"><i class="fas fa-scale-balanced me-1"></i>獲利因子</div>
+          <div class="stat-num" id="s-pf">—</div>
+          <div class="stat-sub" id="s-dd">—</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card-s h-100">
+          <div class="stat-label"><i class="fas fa-layer-group me-1"></i>持倉中</div>
+          <div class="stat-num" id="s-open">—</div>
+          <div class="stat-sub">虛擬部位</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Equity curve -->
+    <div class="card-s mb-4">
+      <div class="stat-label mb-2">資金曲線</div>
+      <canvas id="equityChart"></canvas>
+    </div>
+
+    <!-- Bottom row: positions preview + recent trades -->
+    <div class="row g-3">
+      <div class="col-12 col-lg-5">
+        <div class="card-s h-100">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <span class="stat-label mb-0">目前持倉</span>
+            <span class="neu small" id="ov-pos-count">0 筆</span>
+          </div>
+          <div id="ov-pos-list"><span class="neu small">無持倉</span></div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-7">
+        <div class="card-s h-100">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <span class="stat-label mb-0">最近交易</span>
+            <span class="neu small">最新 5 筆</span>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm mb-0">
+              <thead><tr><th>幣種</th><th>方向</th><th>原因</th><th>損益</th><th>時間</th></tr></thead>
+              <tbody id="ov-trades-body"><tr><td colspan="5" class="neu text-center py-3">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ②  持倉中 ─────────────────────────────────────── -->
+  <div class="section" id="sec-positions">
+    <div class="page-title"><i class="fas fa-layer-group me-2" style="color:var(--accent)"></i>持倉中</div>
+    <div class="card-s">
+      <div class="table-responsive table-scroll">
+        <table class="table table-sm mb-0">
+          <thead>
+            <tr>
+              <th>幣種</th><th>方向</th><th>進場價</th>
+              <th>止損 SL</th><th>目標一 TP1</th><th>目標二 TP2</th>
+              <th>分數</th><th>狀態</th><th>開倉時間</th>
+            </tr>
+          </thead>
+          <tbody id="pos-body">
+            <tr><td colspan="9" class="text-center neu py-4">載入中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ③  交易紀錄 ─────────────────────────────────────── -->
+  <div class="section" id="sec-history">
+    <div class="page-title"><i class="fas fa-clock-rotate-left me-2" style="color:var(--accent)"></i>交易紀錄</div>
+
+    <!-- Summary stats -->
+    <div class="row g-3 mb-4" id="hist-stats-row">
+      <div class="col-6 col-md-3"><div class="card-s text-center">
+        <div class="stat-label">總損益</div>
+        <div class="fw-bold fs-5" id="hs-pnl">—</div>
+      </div></div>
+      <div class="col-6 col-md-3"><div class="card-s text-center">
+        <div class="stat-label">完整平倉筆數</div>
+        <div class="fw-bold fs-5" id="hs-total">—</div>
+      </div></div>
+      <div class="col-6 col-md-3"><div class="card-s text-center">
+        <div class="stat-label">平均獲利</div>
+        <div class="fw-bold fs-5 pos" id="hs-avgwin">—</div>
+      </div></div>
+      <div class="col-6 col-md-3"><div class="card-s text-center">
+        <div class="stat-label">平均虧損</div>
+        <div class="fw-bold fs-5 neg" id="hs-avgloss">—</div>
+      </div></div>
+    </div>
+
+    <div class="card-s">
+      <div class="table-responsive table-scroll">
+        <table class="table table-sm mb-0">
+          <thead>
+            <tr><th>幣種</th><th>方向</th><th>進場</th><th>出場</th><th>原因</th><th>損益 (USDT)</th><th>分數</th><th>平倉時間</th></tr>
+          </thead>
+          <tbody id="trades-body">
+            <tr><td colspan="8" class="text-center neu py-4">載入中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ④  掃描 & 訊號 ─────────────────────────────────────── -->
+  <div class="section" id="sec-scanner">
+    <div class="page-title"><i class="fas fa-magnifying-glass-chart me-2" style="color:var(--accent)"></i>掃描 &amp; 訊號</div>
+
+    <!-- Scan trigger -->
+    <div class="card-s mb-4">
+      <div class="row align-items-center g-3">
+        <div class="col-12 col-md-8">
+          <div class="fw-semibold mb-1">立即掃描全市場</div>
+          <div class="neu small">對所有 BingX USDT 永續合約執行 EMA 收斂突破掃描，達標訊號自動開虛擬倉。</div>
+        </div>
+        <div class="col-12 col-md-4 text-md-end">
+          <button class="btn btn-primary" id="scan-btn" onclick="triggerScan()">
+            <span class="scan-label"><i class="fas fa-play me-1"></i>立即掃描</span>
+            <span class="scan-spin"><span class="spinner-border spinner-border-sm"></span>掃描中...</span>
+          </button>
+        </div>
+      </div>
+      <div class="mt-3 p-2 rounded" id="scan-result-bar" style="display:none; background:rgba(88,166,255,.08); border:1px solid rgba(88,166,255,.2);">
+        <span id="scan-result-msg" class="small"></span>
+      </div>
+    </div>
+
+    <!-- Signal history -->
+    <div class="card-s">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <span class="fw-semibold">訊號歷史</span>
+        <span class="neu small">最近 50 筆（最新在上）</span>
+      </div>
+      <div class="table-responsive table-scroll">
+        <table class="table table-sm mb-0">
+          <thead>
+            <tr><th>時間</th><th>幣種</th><th>方向</th><th>分數</th><th>進場</th><th>止損</th><th>TP1</th><th>帶寬</th></tr>
+          </thead>
+          <tbody id="signals-body">
+            <tr><td colspan="8" class="text-center neu py-4">載入中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ⑤  回測 ─────────────────────────────────────── -->
+  <div class="section" id="sec-backtest">
+    <div class="page-title"><i class="fas fa-flask me-2" style="color:var(--accent)"></i>回測</div>
+
+    <div class="card-s mb-4">
+      <div class="fw-semibold mb-1">歷史回測</div>
+      <div class="neu small mb-3">使用最近 ~83 天（500 根 4H K 棒）模擬策略表現。每筆風險 2% 資金，含 TP1 半平、SL 移本、TP2 全平。</div>
+      <div class="row g-2 align-items-end" style="max-width:480px;">
+        <div class="col">
+          <label class="form-label small neu mb-1">交易對（BingX 格式）</label>
+          <input type="text" class="form-control form-control-sm" id="bt-sym" placeholder="BTC-USDT" value="BTC-USDT">
+        </div>
+        <div class="col-auto">
+          <button class="btn btn-primary btn-sm" id="bt-btn" onclick="triggerBacktest()">
+            <span id="bt-text">執行回測</span>
+            <span id="bt-spin" class="d-none"><span class="spinner-border spinner-border-sm me-1"></span>回測中...</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="bt-result"></div>
+  </div>
+
+  <!-- ⑥  策略說明 ─────────────────────────────────────── -->
+  <div class="section" id="sec-strategy">
+    <div class="page-title"><i class="fas fa-book-open me-2" style="color:var(--accent)"></i>策略說明</div>
+    <div class="row g-4" style="max-width:900px;">
+
+      <!-- Core concept -->
+      <div class="col-12">
+        <div class="card-s">
+          <div class="fw-semibold mb-2 text-white">核心概念：EMA 收斂突破</div>
+          <p class="neu mb-0" style="line-height:1.75;">
+            當短期四條 EMA（15 / 30 / 45 / 60）逐漸靠攏，代表市場進入盤整、能量壓縮。
+            一旦某方向的力量爆發帶量突破壓縮區，通常產生一段較純的趨勢行情。
+            本策略結合 <strong class="text-white">4H 壓縮 + 突破</strong> 與 <strong class="text-white">1H 確認</strong>，
+            在 EMA200 趨勢方向一致的前提下進場。
+          </p>
+        </div>
+      </div>
+
+      <!-- Entry conditions -->
+      <div class="col-12">
+        <div class="card-s">
+          <div class="fw-semibold mb-3 text-white"><i class="fas fa-list-check me-2 pos"></i>進場條件（4 個步驟全部通過）</div>
+          <div class="row g-3">
+            <div class="col-12 col-md-6">
+              <div class="step-block">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                  <span class="step-num">STEP 1</span>
+                  <strong>4H EMA 收斂</strong>
+                </div>
+                <ul class="mb-0 neu" style="padding-left:1.1rem; line-height:1.85;">
+                  <li>帶寬 = (EMA 群最高 − 最低) ÷ EMA60 × 100</li>
+                  <li>當前帶寬 <code>&lt; 2%</code></li>
+                  <li>帶寬連續遞減 ≥ <code>3 根</code> 4H K 棒</li>
+                </ul>
+              </div>
+            </div>
+            <div class="col-12 col-md-6">
+              <div class="step-block">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                  <span class="step-num">STEP 2</span>
+                  <strong>4H 帶量突破</strong>
+                </div>
+                <ul class="mb-0 neu" style="padding-left:1.1rem; line-height:1.85;">
+                  <li>帶寬從上一根開始<strong class="text-white">擴張</strong></li>
+                  <li>量能 ≥ 前 5 根均量的 <code>1.5 倍</code></li>
+                  <li>收盤在 EMA60 上方 → <span class="pos fw-bold">LONG</span></li>
+                  <li>收盤在 EMA60 下方 → <span class="neg fw-bold">SHORT</span></li>
+                </ul>
+              </div>
+            </div>
+            <div class="col-12 col-md-6">
+              <div class="step-block">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                  <span class="step-num" style="background:var(--warn); color:#000;">STEP 3</span>
+                  <strong>EMA200 趨勢過濾</strong>
+                </div>
+                <ul class="mb-0 neu" style="padding-left:1.1rem; line-height:1.85;">
+                  <li>LONG：收盤必須在 EMA200 <strong class="text-white">上方</strong></li>
+                  <li>SHORT：收盤必須在 EMA200 <strong class="text-white">下方</strong></li>
+                  <li>距 EMA200 <code>&lt; 1%</code> 則跳過（避免卡關）</li>
+                </ul>
+              </div>
+            </div>
+            <div class="col-12 col-md-6">
+              <div class="step-block">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                  <span class="step-num" style="background:var(--pos);">STEP 4</span>
+                  <strong>1H 確認</strong>
+                </div>
+                <ul class="mb-0 neu" style="padding-left:1.1rem; line-height:1.85;">
+                  <li>收盤方向與突破方向一致（在 EMA60 同側）</li>
+                  <li>蠟燭實體比例 ≥ <code>60%</code>（過濾假突破）</li>
+                  <li>EMA15 剛穿越 EMA30（最近兩根確認交叉）</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trade levels + Risk -->
+      <div class="col-12 col-md-6">
+        <div class="card-s h-100">
+          <div class="fw-semibold mb-3 text-white"><i class="fas fa-crosshairs me-2 warn"></i>交易水位計算</div>
+          <table class="table table-sm mb-2">
+            <tbody>
+              <tr><td class="neu">進場價</td><td>4H 收盤價</td></tr>
+              <tr>
+                <td class="neu">止損 (SL)</td>
+                <td class="neg">
+                  LONG：收斂區最低 − 0.5 ATR<br>
+                  SHORT：收斂區最高 + 0.5 ATR
+                </td>
+              </tr>
+              <tr><td class="neu">目標一 (TP1)</td><td class="pos">進場 ± 1.5R → 平倉 50%，SL 移成本</td></tr>
+              <tr><td class="neu">目標二 (TP2)</td><td class="pos">進場 ± 2.5R → 平倉剩餘 50%</td></tr>
+              <tr><td class="neu">理想回測進場</td><td>1H EMA30（等拉回進，風險更小）</td></tr>
+            </tbody>
+          </table>
+          <p class="neu small mb-0"><i class="fas fa-info-circle me-1"></i>收斂區間取壓縮期間最高 / 最低點。</p>
+        </div>
+      </div>
+      <div class="col-12 col-md-6">
+        <div class="card-s h-100">
+          <div class="fw-semibold mb-3 text-white"><i class="fas fa-shield-halved me-2 neg"></i>資金管理</div>
+          <table class="table table-sm mb-2">
+            <tbody>
+              <tr><td class="neu">每筆風險</td><td>帳戶淨值 × <code>2%</code></td></tr>
+              <tr><td class="neu">合約數</td><td>風險金額 ÷ |進場 − 止損|</td></tr>
+              <tr><td class="neu">TP1 出場</td><td class="pos">平倉 50%，止損移到成本（保本）</td></tr>
+              <tr><td class="neu">TP2 出場</td><td class="pos">平倉剩餘 50%</td></tr>
+              <tr><td class="neu">最大持倉時間</td><td>48 小時</td></tr>
+              <tr><td class="neu">失效條件</td><td class="neg">收盤回到 EMA 群內 → 立即出場</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Scoring -->
+      <div class="col-12">
+        <div class="card-s">
+          <div class="fw-semibold mb-3 text-white"><i class="fas fa-star-half-stroke me-2 warn"></i>評分系統（滿分 10 分，≥ 6 分才推播）</div>
+          <div class="table-responsive">
+            <table class="table table-sm mb-3">
+              <thead><tr><th>項目</th><th>條件</th><th class="text-end">加分</th></tr></thead>
+              <tbody>
+                <tr><td rowspan="3" class="align-middle">帶寬壓縮</td><td class="neu">帶寬 &lt; 1.0%</td><td class="pos text-end">+2.0</td></tr>
+                <tr><td class="neu">1.0%–1.5%</td><td class="pos text-end">+1.0</td></tr>
+                <tr><td class="neu">1.5%–2.0%</td><td class="pos text-end">+0.5</td></tr>
+                <tr><td rowspan="2" class="align-middle">壓縮持續</td><td class="neu">≥ 5 根</td><td class="pos text-end">+2.0</td></tr>
+                <tr><td class="neu">3–4 根</td><td class="pos text-end">+1.0</td></tr>
+                <tr><td rowspan="2" class="align-middle">突破量能</td><td class="neu">量比 ≥ 2.0×</td><td class="pos text-end">+2.0</td></tr>
+                <tr><td class="neu">量比 1.5×–2.0×</td><td class="pos text-end">+1.0</td></tr>
+                <tr><td rowspan="2" class="align-middle">1H 實體比</td><td class="neu">≥ 70%</td><td class="pos text-end">+1.0</td></tr>
+                <tr><td class="neu">60%–70%</td><td class="pos text-end">+0.5</td></tr>
+                <tr><td>EMA200 方向</td><td class="neu">通過趨勢過濾（固定）</td><td class="pos text-end">+1.0</td></tr>
+                <tr><td>1H EMA 交叉</td><td class="neu">通過 1H 確認（固定）</td><td class="pos text-end">+1.0</td></tr>
+                <tr style="border-top:2px solid var(--border)"><td>歐美盤加分</td><td class="neu">台灣時間 15:00–22:00</td><td class="pos text-end">+1.0</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="row g-2 text-center">
+            <div class="col-4">
+              <div class="step-block">
+                <div class="neu small">最低分（剛好達標）</div>
+                <div class="fw-bold neu fs-5">3.5</div>
+              </div>
+            </div>
+            <div class="col-4">
+              <div class="step-block" style="border-color:var(--warn);">
+                <div class="neu small">推播門檻</div>
+                <div class="fw-bold warn fs-5">≥ 6.0</div>
+              </div>
+            </div>
+            <div class="col-4">
+              <div class="step-block" style="border-color:var(--pos);">
+                <div class="neu small">滿分（最佳條件）</div>
+                <div class="fw-bold pos fs-5">10.0</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Schedule -->
+      <div class="col-12">
+        <div class="card-s">
+          <div class="fw-semibold mb-3 text-white"><i class="fas fa-clock me-2" style="color:var(--accent)"></i>掃描排程與去重機制</div>
+          <div class="row g-3 text-center">
+            <div class="col-12 col-md-4">
+              <div class="step-block">
+                <div class="fw-bold fs-4" style="color:var(--accent);">60 min</div>
+                <div class="neu small mt-1">定時掃描間隔</div>
+              </div>
+            </div>
+            <div class="col-12 col-md-4">
+              <div class="step-block">
+                <div class="fw-bold" style="color:var(--accent); font-size:1.1rem;">00/04/08/12/16/20</div>
+                <div class="neu small mt-1">UTC 4H K線收盤時額外觸發</div>
+              </div>
+            </div>
+            <div class="col-12 col-md-4">
+              <div class="step-block">
+                <div class="fw-bold fs-4" style="color:var(--accent);">4 hrs</div>
+                <div class="neu small mt-1">同一幣種去重窗口</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- row -->
+  </div><!-- sec-strategy -->
+
+</main><!-- main -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ════════════════════════════════════════════════
+//  Navigation
+// ════════════════════════════════════════════════
+const SECTIONS = ['overview','positions','history','scanner','backtest','strategy'];
+let currentSection = 'overview';
+
+function show(id, navEl) {
+  SECTIONS.forEach(s => document.getElementById('sec-'+s).classList.remove('active'));
+  document.getElementById('sec-'+id).classList.add('active');
+  document.querySelectorAll('.nav-link-item').forEach(el => el.classList.remove('active'));
+  if (navEl) navEl.classList.add('active');
+  currentSection = id;
+  if (id === 'scanner') loadSignals();
+  if (window.innerWidth <= 768) closeSidebar();
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('overlay').classList.toggle('open');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('overlay').classList.remove('open');
+}
+
+// ════════════════════════════════════════════════
+//  Helpers
+// ════════════════════════════════════════════════
+const $  = id => document.getElementById(id);
+const pc = v  => v > 0 ? 'pos' : v < 0 ? 'neg' : 'neu';
+const fmt = (n, d=4) => Number(n).toLocaleString('en-US', {minimumFractionDigits:d, maximumFractionDigits:d});
+const fmtPnl = v => `${v>=0?'+':''}$${fmt(v,2)}`;
+const pfDisp = v => (v===null||v>=999) ? '∞' : v;
+
+function dirBadge(d)  { return `<span class="badge-${d==='LONG'?'long':'short'}">${d}</span>`; }
+function reasonBadge(r) {
+  const m = {SL:'sl', TP1:'tp1', TP2:'tp2', END:'end'};
+  return `<span class="badge-${m[r]||'end'}">${r}</span>`;
+}
+
+// ════════════════════════════════════════════════
+//  Equity Chart
+// ════════════════════════════════════════════════
+let chart = null;
+function drawChart(labels, data) {
+  if (chart) chart.destroy();
+  const ctx = $('equityChart').getContext('2d');
+  const grad = ctx.createLinearGradient(0,0,0,200);
+  grad.addColorStop(0, 'rgba(88,166,255,.18)');
+  grad.addColorStop(1, 'rgba(88,166,255,.0)');
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets:[{
+      data, borderColor:'#58a6ff', backgroundColor: grad,
+      borderWidth:1.5, fill:true,
+      pointRadius: data.length > 40 ? 0 : 3, tension:.3
+    }]},
+    options: {
+      responsive:true, maintainAspectRatio:true,
+      plugins:{ legend:{display:false}, tooltip:{
+        callbacks:{ label: c => ' $' + c.parsed.y.toLocaleString() }
+      }},
+      scales:{
+        x:{ ticks:{ color:'#8b949e', maxTicksLimit:8, font:{size:11}}, grid:{color:'#21262d'}},
+        y:{ ticks:{ color:'#8b949e', callback: v=>'$'+v.toLocaleString(), font:{size:11}}, grid:{color:'#21262d'}}
+      }
+    }
+  });
+}
+
+// ════════════════════════════════════════════════
+//  Account data
+// ════════════════════════════════════════════════
+async function loadAccount() {
+  const res = await fetch('/api/account');
+  const d   = await res.json();
+  const s   = d.stats;
+
+  $('last-update').textContent = '更新 ' + new Date().toLocaleTimeString('zh-TW');
+
+  // ── Stat cards ──
+  const ret = s.total_return_pct ?? 0;
+  $('s-balance').innerHTML = `<span class="${pc(ret)}">$${fmt(s.current_balance,2)}</span>`;
+  $('s-return').innerHTML  = `<span class="${pc(ret)}">${ret>=0?'+':''}${ret}%</span>`;
+
+  const wr = s.win_rate_pct ?? 0;
+  $('s-winrate').innerHTML = `<span class="${wr>=50?'pos':'neg'}">${wr}%</span>`;
+  $('s-wl').textContent = `${s.wins??0} 勝 / ${s.losses??0} 敗 (共 ${s.full_closes??0} 筆)`;
+
+  const pf = pfDisp(s.profit_factor);
+  $('s-pf').innerHTML = `<span class="${(s.profit_factor??0)>=1?'pos':'neg'}">${pf}</span>`;
+  $('s-dd').textContent = `最大回撤 ${s.max_drawdown_pct??0}%`;
+  $('s-open').textContent = s.open_positions ?? 0;
+
+  // Badge on nav
+  const nbp = $('nav-badge-pos');
+  if ((s.open_positions??0) > 0) { nbp.textContent = s.open_positions; nbp.style.display=''; }
+  else nbp.style.display = 'none';
+
+  // ── Equity chart ──
+  drawChart(d.equity_curve.labels, d.equity_curve.data);
+
+  // ── Overview: positions preview ──
+  $('ov-pos-count').textContent = `${d.positions.length} 筆`;
+  const ovPos = $('ov-pos-list');
+  if (!d.positions.length) {
+    ovPos.innerHTML = '<span class="neu small">目前無持倉</span>';
+  } else {
+    ovPos.innerHTML = d.positions.map(p => `
+      <div class="d-flex align-items-center justify-content-between py-1" style="border-bottom:1px solid var(--border2);">
+        <div>
+          <strong>${p.symbol.replace('-USDT','')}</strong>
+          <span class="ms-2">${dirBadge(p.direction)}</span>
+          ${p.tp1_hit ? '<span class="badge-tp1 ms-1">TP1✓</span>' : ''}
+        </div>
+        <div class="text-end">
+          <div class="small">進 ${fmt(p.entry)}</div>
+          <div class="neu" style="font-size:.72rem;">SL ${fmt(p.stop_loss)}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  // ── Overview: recent 5 trades ──
+  const ot = $('ov-trades-body');
+  if (!d.trades.length) {
+    ot.innerHTML = '<tr><td colspan="5" class="neu text-center py-3">尚無紀錄</td></tr>';
+  } else {
+    ot.innerHTML = d.trades.slice(0,5).map(t => `
+      <tr>
+        <td><strong>${t.symbol.replace('-USDT','')}</strong></td>
+        <td>${dirBadge(t.direction)}</td>
+        <td>${reasonBadge(t.reason)}</td>
+        <td class="${pc(t.pnl)}">${fmtPnl(t.pnl)}</td>
+        <td class="neu" style="font-size:.75rem;">${t.close_time}</td>
+      </tr>`).join('');
+  }
+
+  // ── Positions full table ──
+  const pb = $('pos-body');
+  if (!d.positions.length) {
+    pb.innerHTML = '<tr><td colspan="9" class="text-center neu py-4">目前無持倉</td></tr>';
+  } else {
+    pb.innerHTML = d.positions.map(p => `
+      <tr>
+        <td><strong>${p.symbol}</strong></td>
+        <td>${dirBadge(p.direction)}</td>
+        <td>${fmt(p.entry)}</td>
+        <td class="neg">${fmt(p.stop_loss)}</td>
+        <td class="pos">${fmt(p.target1)}</td>
+        <td class="pos">${fmt(p.target2)}</td>
+        <td><span style="background:rgba(88,166,255,.15);color:#58a6ff;padding:2px 8px;border-radius:4px;">${p.score}</span></td>
+        <td>${p.tp1_hit ? '<span class="badge-tp2">TP1 已達 ✓</span>' : '<span style="color:var(--muted);font-size:.78rem;">進行中</span>'}</td>
+        <td class="neu" style="font-size:.78rem;">${p.open_time}</td>
+      </tr>`).join('');
+  }
+
+  // ── History ──
+  $('hs-pnl').innerHTML   = `<span class="${pc(s.total_pnl??0)}">${fmtPnl(s.total_pnl??0)}</span>`;
+  $('hs-total').textContent = s.full_closes ?? 0;
+  $('hs-avgwin').textContent  = `+$${fmt(s.avg_win??0,2)}`;
+  $('hs-avgloss').textContent = `$${fmt(s.avg_loss??0,2)}`;
+
+  const tb = $('trades-body');
+  if (!d.trades.length) {
+    tb.innerHTML = '<tr><td colspan="8" class="text-center neu py-4">尚無交易紀錄</td></tr>';
+  } else {
+    tb.innerHTML = d.trades.map(t => `
+      <tr>
+        <td><strong>${t.symbol}</strong></td>
+        <td>${dirBadge(t.direction)}</td>
+        <td>${fmt(t.entry)}</td>
+        <td>${fmt(t.exit)}</td>
+        <td>${reasonBadge(t.reason)}</td>
+        <td class="${pc(t.pnl)}">${fmtPnl(t.pnl)}</td>
+        <td>${t.score}</td>
+        <td class="neu" style="font-size:.78rem;">${t.close_time}</td>
+      </tr>`).join('');
+  }
+}
+
+// ════════════════════════════════════════════════
+//  Signals
+// ════════════════════════════════════════════════
+async function loadSignals() {
+  const arr = await (await fetch('/api/signals')).json();
+  const sb  = $('signals-body');
+  if (!arr.length) {
+    sb.innerHTML = '<tr><td colspan="8" class="text-center neu py-4">尚無訊號 — 點「立即掃描」開始</td></tr>';
+    return;
+  }
+  sb.innerHTML = arr.map(s => `
+    <tr>
+      <td class="neu" style="font-size:.78rem;">${s.time}</td>
+      <td><strong>${s.symbol}</strong></td>
+      <td>${dirBadge(s.direction)}</td>
+      <td><span style="background:rgba(88,166,255,.15);color:#58a6ff;padding:2px 8px;border-radius:4px;font-size:.78rem;">${s.score}</span></td>
+      <td>${fmt(s.entry)}</td>
+      <td class="neg">${fmt(s.stop_loss)}</td>
+      <td class="pos">${fmt(s.target1)}</td>
+      <td class="neu">${Number(s.bandwidth).toFixed(2)}%</td>
+    </tr>`).join('');
+}
+
+// ════════════════════════════════════════════════
+//  Manual Scan
+// ════════════════════════════════════════════════
+let scanPoll = null;
+
+async function triggerScan() {
+  const btn = $('scan-btn');
+  btn.disabled = true; btn.classList.add('scan-spinning');
+  $('scan-result-bar').style.display = 'none';
+
+  const r = await fetch('/api/scan', {method:'POST'});
+  if (!r.ok) {
+    const e = await r.json();
+    alert(e.error); btn.disabled=false; btn.classList.remove('scan-spinning'); return;
+  }
+
+  clearInterval(scanPoll);
+  scanPoll = setInterval(async () => {
+    const st = await (await fetch('/api/task/status')).json();
+    if (!st.running) {
+      clearInterval(scanPoll);
+      btn.disabled=false; btn.classList.remove('scan-spinning');
+      if (st.error) { alert('錯誤：'+st.error); return; }
+      const found  = st.result?.found  ?? 0;
+      const opened = st.result?.opened ?? 0;
+      $('scan-result-bar').style.display = '';
+      $('scan-result-msg').innerHTML =
+        `<i class="fas fa-check-circle me-1 pos"></i>掃描完成 — 達標訊號 <strong>${found}</strong> 個，新開虛擬倉 <strong>${opened}</strong> 筆`;
+      loadSignals(); loadAccount();
+    }
+  }, 3000);
+}
+
+// ════════════════════════════════════════════════
+//  Backtest
+// ════════════════════════════════════════════════
+let btPoll = null;
+
+async function triggerBacktest() {
+  const symbol = $('bt-sym').value.trim().toUpperCase();
+  if (!symbol) return;
+  $('bt-btn').disabled=true; $('bt-text').classList.add('d-none'); $('bt-spin').classList.remove('d-none');
+  $('bt-result').innerHTML = '';
+
+  const r = await fetch('/api/backtest', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({symbol})
+  });
+  if (!r.ok) {
+    const e = await r.json(); alert(e.error);
+    $('bt-btn').disabled=false; $('bt-text').classList.remove('d-none'); $('bt-spin').classList.add('d-none'); return;
+  }
+
+  clearInterval(btPoll);
+  btPoll = setInterval(async () => {
+    const st = await (await fetch('/api/task/status')).json();
+    if (!st.running) {
+      clearInterval(btPoll);
+      $('bt-btn').disabled=false; $('bt-text').classList.remove('d-none'); $('bt-spin').classList.add('d-none');
+      if (st.error) { alert('錯誤：'+st.error); return; }
+      renderBt(st.result);
+    }
+  }, 2000);
+}
+
+function renderBt(result) {
+  const div = $('bt-result');
+  if (!result || result.error) {
+    div.innerHTML = `<div class="card-s" style="border-color:var(--neg);"><span class="neg">${result?.error??'未知錯誤'}</span></div>`; return;
+  }
+  const s = result.stats;
+  const trades = result.trades || [];
+  const ret = s.total_return_pct ?? 0;
+
+  div.innerHTML = `
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-md-3"><div class="card-s text-center">
+        <div class="stat-label">總報酬</div>
+        <div class="fw-bold fs-5 ${pc(ret)}">${ret>=0?'+':''}${ret}%</div>
+        <div class="stat-sub">${fmtPnl(s.total_pnl??0)}</div>
+      </div></div>
+      <div class="col-6 col-md-3"><div class="card-s text-center">
+        <div class="stat-label">勝率</div>
+        <div class="fw-bold fs-5 ${(s.win_rate_pct??0)>=50?'pos':'neg'}">${s.win_rate_pct}%</div>
+        <div class="stat-sub">${s.wins} 勝 / ${s.losses} 敗</div>
+      </div></div>
+      <div class="col-6 col-md-3"><div class="card-s text-center">
+        <div class="stat-label">獲利因子</div>
+        <div class="fw-bold fs-5 ${(s.profit_factor??0)>=1?'pos':'neg'}">${pfDisp(s.profit_factor)}</div>
+        <div class="stat-sub">訊號 ${s.total_signals??0} 次</div>
+      </div></div>
+      <div class="col-6 col-md-3"><div class="card-s text-center">
+        <div class="stat-label">最大回撤</div>
+        <div class="fw-bold fs-5 neg">${s.max_drawdown_pct}%</div>
+        <div class="stat-sub">完整平倉 ${s.full_closes} 筆</div>
+      </div></div>
+    </div>
+    ${trades.length ? `
+    <div class="card-s">
+      <div class="fw-semibold mb-3">交易明細</div>
+      <div class="table-responsive table-scroll">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>平倉時間</th><th>方向</th><th>進場</th><th>出場</th><th>原因</th><th>損益</th></tr></thead>
+          <tbody>${trades.map(t => {
+            const ts = new Date(t.close_ms).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false});
+            return `<tr>
+              <td class="neu" style="font-size:.78rem;">${ts}</td>
+              <td>${dirBadge(t.direction)}</td><td>${fmt(t.entry)}</td><td>${fmt(t.exit)}</td>
+              <td>${reasonBadge(t.reason)}</td>
+              <td class="${pc(t.pnl)}">${fmtPnl(t.pnl)}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>
+    </div>` : '<div class="card-s neu">此期間無達標訊號</div>'}
+  `;
+}
+
+// ════════════════════════════════════════════════
+//  Init
+// ════════════════════════════════════════════════
+function loadAll() { loadAccount(); }
+
+loadAll();
+setInterval(loadAll, 5 * 60 * 1000);
+</script>
+</body>
+</html>

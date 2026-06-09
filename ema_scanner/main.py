@@ -11,13 +11,15 @@ import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from bingx      import get_contracts, get_klines
-from scanner    import scan_symbol
-from scorer     import score_setup, passes_threshold
+from bingx       import get_contracts, get_klines
+from scanner     import scan_symbol
+from scorer      import score_setup, passes_threshold
 from discord_bot import send_setup_alerts, send_no_setup_summary
+from paper_trader import PaperTrader
 
 # ── 常數設定 ──────────────────────────────────────────────
 STATE_FILE      = Path(__file__).parent / "state.json"
+SIGNALS_LOG     = Path(__file__).parent / "signals_log.json"
 SCAN_INTERVAL   = 60 * 60          # 60 分鐘（秒）
 DEDUP_WINDOW    = 4 * 60 * 60      # 4 小時去重窗口（秒）
 KLINES_4H_LIMIT = 250   # EMA200 需要足夠歷史資料（至少 200 根）
@@ -53,6 +55,28 @@ def mark_alerted(state: dict, symbol: str) -> None:
     state[symbol] = time.time()
 
 
+def log_signal(result: dict, score: float) -> None:
+    """將達標訊號寫入 signals_log.json 供網頁儀表板讀取"""
+    try:
+        existing: list = json.loads(SIGNALS_LOG.read_text(encoding="utf-8")) if SIGNALS_LOG.exists() else []
+        existing.append({
+            "symbol":    result["symbol"],
+            "direction": result["direction"],
+            "score":     score,
+            "entry":     result["levels"]["entry"],
+            "stop_loss": result["levels"]["stop_loss"],
+            "target1":   result["levels"]["target1"],
+            "target2":   result["levels"]["target2"],
+            "bandwidth": result["convergence"]["bandwidth"],
+            "time":      datetime.now(TW_TZ).strftime("%Y/%m/%d %H:%M"),
+        })
+        SIGNALS_LOG.write_text(
+            json.dumps(existing[-300:], ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except Exception:
+        pass
+
+
 def prune_state(state: dict) -> dict:
     """清除過期的去重記錄"""
     now = time.time()
@@ -84,12 +108,14 @@ def run_scan() -> None:
 
     print(f"[資訊] 共取得 {len(symbols)} 個交易對")
 
-    state = load_state()
-    state = prune_state(state)
+    state  = load_state()
+    state  = prune_state(state)
+    trader = PaperTrader.load()
 
-    qualified    = []   # (result, score)
-    converging   = 0
-    total        = len(symbols)
+    qualified     = []   # (result, score)
+    converging    = 0
+    total         = len(symbols)
+    latest_bar_4h: dict[str, dict] = {}  # symbol → 最新 4H K棒（供部位更新用）
 
     for i, symbol in enumerate(symbols, 1):
         # 取得 K 線
@@ -97,6 +123,8 @@ def run_scan() -> None:
         candles_1h = get_klines(symbol, "1H", KLINES_1H_LIMIT)
         if candles_4h is None or candles_1h is None:
             continue
+
+        latest_bar_4h[symbol] = candles_4h[-1]
 
         # 掃描邏輯
         result = scan_symbol(symbol, candles_4h, candles_1h)
@@ -118,6 +146,7 @@ def run_scan() -> None:
         print(f"  [訊號] {symbol}  {result['direction']}  score={score}")
         qualified.append((result, score))
         mark_alerted(state, symbol)
+        log_signal(result, score)
 
         # 每處理 20 個印出進度
         if i % 20 == 0:
@@ -125,10 +154,32 @@ def run_scan() -> None:
 
     save_state(state)
 
+    # ── 紙上帳戶更新 ──────────────────────────────────────────
+    # 對持倉中但未在本輪掃描的幣種補取最新 K 線
+    for sym in list(trader.positions.keys()):
+        if sym not in latest_bar_4h:
+            extra = get_klines(sym, "4H", 5)
+            if extra:
+                latest_bar_4h[sym] = extra[-1]
+
+    # 更新所有持倉（止損/止盈檢查）
+    exit_events = trader.update_positions(latest_bar_4h)
+    for ev in exit_events:
+        print(f"  [紙倉出場] {ev['symbol']:20s}  {ev['reason']}  PnL: ${ev['pnl']:>+.2f}")
+
+    # 開新虛擬倉（依分數降序）
+    qualified.sort(key=lambda x: x[1], reverse=True)
+    for result, score in qualified:
+        if trader.open_position(result, score):
+            lvl = result["levels"]
+            print(f"  [紙倉開倉] {result['symbol']:20s}  {result['direction']}  "
+                  f"@{lvl['entry']:.6g}  SL={lvl['stop_loss']:.6g}  score={score}")
+
+    trader.save()
+    trader.print_report()
+
     # 發送通知
     if qualified:
-        # 依分數降序排列
-        qualified.sort(key=lambda x: x[1], reverse=True)
         send_setup_alerts(qualified)
         print(f"[完成] 發送 {len(qualified)} 個訊號")
     else:
