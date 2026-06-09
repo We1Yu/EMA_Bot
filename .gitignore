@@ -1,0 +1,18 @@
+# 狀態與日誌（含個人資料）
+ema_scanner/state.json
+logs/
+
+# Python 快取
+__pycache__/
+*.pyc
+*.pyo
+
+# 環境變數（絕對不能上傳）
+.env
+*.env
+
+# NSSM 執行檔
+nssm.exe
+
+# deploy 資料夾（含伺服器 IP 等敏感資訊）
+deploy/
