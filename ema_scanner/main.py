@@ -11,11 +11,12 @@ import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from bingx       import get_contracts, get_klines
-from scanner     import scan_symbol
-from scorer      import score_setup, passes_threshold
-from discord_bot import send_setup_alerts, send_no_setup_summary
+from bingx        import get_contracts, get_klines
+from scanner      import scan_symbol
+from scorer       import score_setup, passes_threshold
+from discord_bot  import send_setup_alerts, send_no_setup_summary
 from paper_trader import PaperTrader
+from indicators   import ema_snapshot
 
 # ── 常數設定 ──────────────────────────────────────────────
 STATE_FILE      = Path(__file__).parent / "state.json"
@@ -153,6 +154,20 @@ def run_scan() -> None:
 
     print(f"[資訊] 共取得 {len(symbols)} 個交易對")
 
+    # ── Regime Filter：BTC 4H EMA15 vs EMA60 ─────────────────
+    btc_regime_bull = True
+    btc_candles_4h  = get_klines("BTC-USDT", "4H", KLINES_4H_LIMIT)
+    if btc_candles_4h and len(btc_candles_4h) >= 60:
+        btc_emas = ema_snapshot(btc_candles_4h)
+        if btc_emas:
+            _idx = len(btc_candles_4h) - 1
+            _e15 = btc_emas["ema15"][_idx]
+            _e60 = btc_emas["ema60"][_idx]
+            if _e15 is not None and _e60 is not None:
+                btc_regime_bull = _e15 > _e60
+    regime_str = "多頭" if btc_regime_bull else "空頭（山寨多單封鎖）"
+    print(f"[Regime] BTC 4H EMA15 {'>' if btc_regime_bull else '<'} EMA60 → {regime_str}")
+
     state  = load_state()
     state  = prune_state(state)
     trader = PaperTrader.load()
@@ -172,7 +187,7 @@ def run_scan() -> None:
         latest_bar_4h[symbol] = candles_4h[-1]
 
         # 掃描邏輯
-        result = scan_symbol(symbol, candles_4h, candles_1h)
+        result = scan_symbol(symbol, candles_4h, candles_1h, btc_regime_bull)
         if result is None:
             continue
 

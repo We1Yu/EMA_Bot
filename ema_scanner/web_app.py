@@ -256,32 +256,6 @@ def api_scan():
     return jsonify({"status": "started"})
 
 
-@app.route("/api/backtest", methods=["POST"])
-def api_backtest():
-    data   = request.get_json() or {}
-    symbol = data.get("symbol", "").strip().upper()
-    if not symbol:
-        return jsonify({"error": "請輸入交易對"}), 400
-
-    with _lock:
-        if _task["running"]:
-            return jsonify({"error": "任務進行中"}), 409
-        _task.update(running=True, type="backtest", result=None, error=None)
-
-    def _do():
-        try:
-            from backtest import run_backtest
-            result = run_backtest(symbol, verbose=False)
-            with _lock:
-                _task.update(running=False, result=result)
-        except Exception as exc:
-            with _lock:
-                _task.update(running=False, error=str(exc))
-
-    threading.Thread(target=_do, daemon=True).start()
-    return jsonify({"status": "started"})
-
-
 # ── 啟動 ─────────────────────────────────────────────────────
 
 if __name__ == "__main__":

@@ -48,36 +48,59 @@ def _now_tw() -> datetime:
     return datetime.now(TW_TZ)
 
 
+def _conditions_block(result: dict) -> str:
+    """將 conditions 清單格式化為 ✅ 條件逐行輸出"""
+    conditions = result.get("conditions", [])
+    if not conditions:
+        return ""
+    lines = ["  觸發條件檢查："]
+    for c in conditions:
+        lines.append(f"  ✅ {c['name']}：{c['value']}")
+    return "\n".join(lines)
+
+
 def _strategy_logic_block(result: dict) -> str:
     """
     依策略類型回傳開單邏輯說明區塊（適合放在 code block 內）
     """
-    strategy = result.get("strategy", "EMA_CONVERGENCE")
-    conv     = result["convergence"]
-    conf     = result["confirm_1h"]
-    vol      = result["vol_ratio"]
-    body     = conf.get("body_ratio", 0)
+    strategy  = result.get("strategy", "EMA_CONVERGENCE")
+    conv      = result["convergence"]
+    conf      = result["confirm_1h"]
+    vol       = result["vol_ratio"]
+    body      = conf.get("body_ratio", 0)
     direction = result["direction"]
 
     if strategy == "EMA_CONVERGENCE":
-        return (
-            f"  ▸ 4H 帶寬壓縮 : {conv['bandwidth']:.2f}%  (持續 {conv['compression_bars']} 根)\n"
-            f"  ▸ 突破量能   : {vol:.1f}× 均量\n"
+        conditions_str = _conditions_block(result)
+        base = (
+            f"  ▸ 4H 帶寬壓縮 : {conv['bandwidth']:.2f}%  (閾值 {conv.get('bw_threshold', '?')}%  持續 {conv['compression_bars']} 根)\n"
+            f"  ▸ 突破量能   : {vol:.2f}× 均量（前20根）\n"
             f"  ▸ EMA200 方向 : {'上方 → 看多' if direction == 'LONG' else '下方 → 看空'}\n"
-            f"  ▸ 1H EMA15 穿越 EMA30 : 確認\n"
+            f"  ▸ 1H EMA15/30 穿越 : 近 2 根確認\n"
             f"  ▸ 1H 蠟燭實體 : {body*100:.0f}%\n"
-            f"  失效條件 : 價格收回 EMA 群內"
         )
+        if conditions_str:
+            base += f"\n{conditions_str}\n"
+        base += "  失效條件 : 價格收回 EMA 群內"
+        return base
 
     if strategy == "EMA_PULLBACK":
-        return (
-            f"  ▸ 大方向 (EMA200) : {'多頭' if direction == 'LONG' else '空頭'}\n"
-            f"  ▸ 1H EMA15 > EMA30 : 短期趨勢一致\n"
+        rsi_val = conf.get("rsi")
+        rsi_str = f"RSI {rsi_val}" if rsi_val else "RSI N/A"
+        conditions_str = _conditions_block(result)
+        base = (
+            f"  ▸ 大方向 (EMA200)  : {'多頭' if direction == 'LONG' else '空頭'}\n"
+            f"  ▸ 4H EMA60 方向   : {'上升' if direction == 'LONG' else '下降'} 一致\n"
+            f"  ▸ 1H EMA15 {'>' if direction=='LONG' else '<'} EMA30 : 短期趨勢確認\n"
             f"  ▸ 前根K棒觸碰 EMA30，當根確認反彈\n"
-            f"  ▸ 量能   : {vol:.1f}× 均量\n"
+            f"  ▸ 1H {rsi_str}{'≥ 40（動能確認）' if direction=='LONG' else '（空單免檢）'}\n"
+            f"  ▸ 量能   : {vol:.2f}× 均量（前20根）\n"
             f"  ▸ 蠟燭實體 : {body*100:.0f}%\n"
-            f"  失效條件 : 收盤跌回 EMA30 下方"
         )
+        if conditions_str:
+            base += f"\n{conditions_str}\n"
+        base += "  失效條件 : 收盤跌回 EMA30 下方"
+        return base
 
     if strategy == "RSI_BOUNCE":
         rsi = conf.get("rsi", 0)
@@ -178,6 +201,10 @@ def build_setup_embed(result: dict, score: float) -> dict:
 
     logic_block = _strategy_logic_block(result)
 
+    regime_label = result.get("regime_filter", "通過")
+    regime_icon  = "✅" if "通過" in regime_label else "⛔"
+    atr_val      = levels.get("atr", 0)
+
     description = (
         f"**📌 策略：{strat_name}**\n"
         f"```\n"
@@ -186,12 +213,13 @@ def build_setup_embed(result: dict, score: float) -> dict:
         f"**💰 交易水位**\n"
         f"```\n"
         f"  進場價  : ${_fp(entry)}\n"
-        f"  止  損  : ${_fp(sl)}  ({_pct(sl, entry)})\n"
-        f"  目標一  : ${_fp(t1)}  (+{rr1:.1f}R / {_pct(t1, entry)})\n"
-        f"  目標二  : ${_fp(t2)}  (+{rr2:.1f}R / {_pct(t2, entry)})\n"
+        f"  止  損  : ${_fp(sl)}  ({_pct(sl, entry)})  ATR={_fp(atr_val)}\n"
+        f"  目標一  : ${_fp(t1)}  (+{rr1:.1f}R / {_pct(t1, entry)})  出場 60%\n"
+        f"  目標二  : ${_fp(t2)}  (+{rr2:.1f}R / {_pct(t2, entry)})  出場 40%\n"
         f"  到期時間: {expire_tw.strftime('%m/%d %H:%M TWN')} ({MAX_HOLD_HOURS}h)\n"
         f"```\n"
-        f"{session_str}  •  {now_tw.strftime('%Y/%m/%d %H:%M TWN')}"
+        f"{regime_icon} Regime Filter：{regime_label}  •  {session_str}\n"
+        f"{now_tw.strftime('%Y/%m/%d %H:%M TWN')}"
     )
 
     return {

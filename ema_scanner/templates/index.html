@@ -188,9 +188,6 @@
     <div class="nav-link-item" onclick="show('scanner',this)">
       <i class="fas fa-magnifying-glass-chart"></i> 掃描 &amp; 訊號
     </div>
-    <div class="nav-link-item" onclick="show('backtest',this)">
-      <i class="fas fa-flask"></i> 回測
-    </div>
   </div>
 
   <div class="nav-group">
@@ -381,31 +378,7 @@
     </div>
   </div>
 
-  <!-- ⑤  回測 ─────────────────────────────────────── -->
-  <div class="section" id="sec-backtest">
-    <div class="page-title"><i class="fas fa-flask me-2" style="color:var(--accent)"></i>回測</div>
-
-    <div class="card-s mb-4">
-      <div class="fw-semibold mb-1">歷史回測</div>
-      <div class="neu small mb-3">使用最近 ~83 天（500 根 4H K 棒）模擬策略表現。每筆風險 2% 資金，含 TP1 半平、SL 移本、TP2 全平。</div>
-      <div class="row g-2 align-items-end" style="max-width:480px;">
-        <div class="col">
-          <label class="form-label small neu mb-1">交易對（BingX 格式）</label>
-          <input type="text" class="form-control form-control-sm" id="bt-sym" placeholder="BTC-USDT" value="BTC-USDT">
-        </div>
-        <div class="col-auto">
-          <button class="btn btn-primary btn-sm" id="bt-btn" onclick="triggerBacktest()">
-            <span id="bt-text">執行回測</span>
-            <span id="bt-spin" class="d-none"><span class="spinner-border spinner-border-sm me-1"></span>回測中...</span>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div id="bt-result"></div>
-  </div>
-
-  <!-- ⑥  策略說明 ─────────────────────────────────────── -->
+  <!-- ⑤  策略說明 ─────────────────────────────────────── -->
   <div class="section" id="sec-strategy">
     <div class="page-title"><i class="fas fa-book-open me-2" style="color:var(--accent)"></i>策略說明 &amp; 參數設定</div>
 
@@ -950,7 +923,7 @@
 // ════════════════════════════════════════════════
 //  Navigation
 // ════════════════════════════════════════════════
-const SECTIONS = ['overview','positions','history','scanner','backtest','strategy'];
+const SECTIONS = ['overview','positions','history','scanner','strategy'];
 let currentSection = 'overview';
 
 function show(id, navEl) {
@@ -1283,90 +1256,6 @@ async function triggerScan() {
       loadSignals(); loadAccount();
     }
   }, 3000);
-}
-
-// ════════════════════════════════════════════════
-//  Backtest
-// ════════════════════════════════════════════════
-let btPoll = null;
-
-async function triggerBacktest() {
-  const symbol = $('bt-sym').value.trim().toUpperCase();
-  if (!symbol) return;
-  $('bt-btn').disabled=true; $('bt-text').classList.add('d-none'); $('bt-spin').classList.remove('d-none');
-  $('bt-result').innerHTML = '';
-
-  const r = await fetch('/api/backtest', {
-    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({symbol})
-  });
-  if (!r.ok) {
-    const e = await r.json(); alert(e.error);
-    $('bt-btn').disabled=false; $('bt-text').classList.remove('d-none'); $('bt-spin').classList.add('d-none'); return;
-  }
-
-  clearInterval(btPoll);
-  btPoll = setInterval(async () => {
-    const st = await (await fetch('/api/task/status')).json();
-    if (!st.running) {
-      clearInterval(btPoll);
-      $('bt-btn').disabled=false; $('bt-text').classList.remove('d-none'); $('bt-spin').classList.add('d-none');
-      if (st.error) { alert('錯誤：'+st.error); return; }
-      renderBt(st.result);
-    }
-  }, 2000);
-}
-
-function renderBt(result) {
-  const div = $('bt-result');
-  if (!result || result.error) {
-    div.innerHTML = `<div class="card-s" style="border-color:var(--neg);"><span class="neg">${result?.error??'未知錯誤'}</span></div>`; return;
-  }
-  const s = result.stats;
-  const trades = result.trades || [];
-  const ret = s.total_return_pct ?? 0;
-
-  div.innerHTML = `
-    <div class="row g-3 mb-4">
-      <div class="col-6 col-md-3"><div class="card-s text-center">
-        <div class="stat-label">總報酬</div>
-        <div class="fw-bold fs-5 ${pc(ret)}">${ret>=0?'+':''}${ret}%</div>
-        <div class="stat-sub">${fmtPnl(s.total_pnl??0)}</div>
-      </div></div>
-      <div class="col-6 col-md-3"><div class="card-s text-center">
-        <div class="stat-label">勝率</div>
-        <div class="fw-bold fs-5 ${(s.win_rate_pct??0)>=50?'pos':'neg'}">${s.win_rate_pct}%</div>
-        <div class="stat-sub">${s.wins} 勝 / ${s.losses} 敗</div>
-      </div></div>
-      <div class="col-6 col-md-3"><div class="card-s text-center">
-        <div class="stat-label">獲利因子</div>
-        <div class="fw-bold fs-5 ${(s.profit_factor??0)>=1?'pos':'neg'}">${pfDisp(s.profit_factor)}</div>
-        <div class="stat-sub">訊號 ${s.total_signals??0} 次</div>
-      </div></div>
-      <div class="col-6 col-md-3"><div class="card-s text-center">
-        <div class="stat-label">最大回撤</div>
-        <div class="fw-bold fs-5 neg">${s.max_drawdown_pct}%</div>
-        <div class="stat-sub">完整平倉 ${s.full_closes} 筆</div>
-      </div></div>
-    </div>
-    ${trades.length ? `
-    <div class="card-s">
-      <div class="fw-semibold mb-3">交易明細</div>
-      <div class="table-responsive table-scroll">
-        <table class="table table-sm mb-0">
-          <thead><tr><th>平倉時間</th><th>方向</th><th>進場</th><th>出場</th><th>原因</th><th>損益</th></tr></thead>
-          <tbody>${trades.map(t => {
-            const ts = new Date(t.close_ms).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false});
-            return `<tr>
-              <td class="neu" style="font-size:.78rem;">${ts}</td>
-              <td>${dirBadge(t.direction)}</td><td>${fmt(t.entry)}</td><td>${fmt(t.exit)}</td>
-              <td>${reasonBadge(t.reason)}</td>
-              <td class="${pc(t.pnl)}">${fmtPnl(t.pnl)}</td>
-            </tr>`;
-          }).join('')}</tbody>
-        </table>
-      </div>
-    </div>` : '<div class="card-s neu">此期間無達標訊號</div>'}
-  `;
 }
 
 // ════════════════════════════════════════════════
