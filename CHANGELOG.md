@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.0] - 2026-06-10
+
+### 新增
+- 網頁儀表板策略說明頁新增全部 8 個策略的觸發條件與參數說明
+- 新增「如何修改參數」完整參考表（scanner.py / scorer.py / paper_trader.py / main.py）
+- 新增 `start.bat` 一鍵雙擊同時啟動掃描機器人與網頁儀表板
+
+### 修正
+- `paper_trader.py`：無交易紀錄時 `print_report()` 存取不存在的 key 導致 `KeyError` crash
+- `paper_trader.py` / `backtest.py`：`profit_factor` 為 `None`（全勝紀錄）時格式化導致 `TypeError` crash
+- `backtest.py`：`print_backtest_report()` / `print_multi_summary()` 同上問題一併修正
+- `scanner.py`：`detect_breakout_4h()` 未檢查前一根 K 棒 EMA 值是否為 `None`，歷史資料不足時導致 `TypeError` crash
+- `start.bat`：修正 Python 執行檔路徑，確保正確啟動
+
 ## [1.0.0] - 2026-06-09
 
 ### 新增
