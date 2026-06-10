@@ -1,68 +1,169 @@
 """
 Discord 通知模組
 建立嵌入訊息並透過 Webhook 發送
+每種策略顯示對應的開單邏輯
 """
 
 import os
-import json
 import requests
 from datetime import datetime, timezone, timedelta
 
-TW_TZ = timezone(timedelta(hours=8))
-WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
+TW_TZ       = timezone(timedelta(hours=8))
+WEBHOOK_URL = os.environ.get(
+    "DISCORD_WEBHOOK_URL",
+    "https://discord.com/api/webhooks/1513800551186301010/WBcMxjBRVzTmZN2IV15DXchzwXDdugeqY4HZTLG2Sdm0Rw-14kNp5ztzxYeg--0J8Xn_"
+)
 
-# 顏色定義
 COLOR_LONG     = 0x00FF88
 COLOR_SHORT    = 0xFF4444
-COLOR_MARGINAL = 0xFFCC00   # 6.0–6.9 分
-
+COLOR_MARGINAL = 0xFFCC00
 MAX_HOLD_HOURS = 48
 
+# 策略中文名稱
+STRATEGY_NAMES = {
+    "EMA_CONVERGENCE": "EMA 收斂突破",
+    "EMA_PULLBACK":    "EMA30 回測反彈",
+    "RSI_BOUNCE":      "RSI 極值反彈",
+    "MACD_CROSS":      "MACD 柱狀圖交叉",
+    "BB_BREAKOUT":     "布林帶收縮突破",
+    "EMA_CROSS_FAST":  "EMA9/21 快速交叉",
+    "SWING_BREAK":     "擺幅高低點突破",
+    "OI_LS_SIGNAL":    "OI 異常 + 多空比",
+}
 
-def _pct(value: float, reference: float) -> str:
-    """計算相對百分比字串"""
-    if reference == 0:
+
+def _pct(value: float, ref: float) -> str:
+    if ref == 0:
         return "N/A"
-    return f"{(value - reference) / reference * 100:+.2f}%"
+    return f"{(value - ref) / ref * 100:+.2f}%"
 
 
-def _fmt_price(price: float) -> str:
-    """根據數值大小選擇合適的小數位數"""
-    if price >= 1000:
-        return f"{price:,.2f}"
-    if price >= 1:
-        return f"{price:.4f}"
+def _fp(price: float) -> str:
+    if price >= 1000: return f"{price:,.2f}"
+    if price >= 1:    return f"{price:.4f}"
     return f"{price:.6f}"
 
 
-def _now_tw_str() -> str:
-    return datetime.now(TW_TZ).strftime("%Y/%m/%d %H:%M TWN")
+def _now_tw() -> datetime:
+    return datetime.now(TW_TZ)
+
+
+def _strategy_logic_block(result: dict) -> str:
+    """
+    依策略類型回傳開單邏輯說明區塊（適合放在 code block 內）
+    """
+    strategy = result.get("strategy", "EMA_CONVERGENCE")
+    conv     = result["convergence"]
+    conf     = result["confirm_1h"]
+    vol      = result["vol_ratio"]
+    body     = conf.get("body_ratio", 0)
+    direction = result["direction"]
+
+    if strategy == "EMA_CONVERGENCE":
+        return (
+            f"  ▸ 4H 帶寬壓縮 : {conv['bandwidth']:.2f}%  (持續 {conv['compression_bars']} 根)\n"
+            f"  ▸ 突破量能   : {vol:.1f}× 均量\n"
+            f"  ▸ EMA200 方向 : {'上方 → 看多' if direction == 'LONG' else '下方 → 看空'}\n"
+            f"  ▸ 1H EMA15 穿越 EMA30 : 確認\n"
+            f"  ▸ 1H 蠟燭實體 : {body*100:.0f}%\n"
+            f"  失效條件 : 價格收回 EMA 群內"
+        )
+
+    if strategy == "EMA_PULLBACK":
+        return (
+            f"  ▸ 大方向 (EMA200) : {'多頭' if direction == 'LONG' else '空頭'}\n"
+            f"  ▸ 1H EMA15 > EMA30 : 短期趨勢一致\n"
+            f"  ▸ 前根K棒觸碰 EMA30，當根確認反彈\n"
+            f"  ▸ 量能   : {vol:.1f}× 均量\n"
+            f"  ▸ 蠟燭實體 : {body*100:.0f}%\n"
+            f"  失效條件 : 收盤跌回 EMA30 下方"
+        )
+
+    if strategy == "RSI_BOUNCE":
+        rsi = conf.get("rsi", 0)
+        zone = "超賣區 (<35)" if direction == "LONG" else "超買區 (>65)"
+        return (
+            f"  ▸ 大方向 (EMA200) : {'多頭' if direction == 'LONG' else '空頭'}\n"
+            f"  ▸ RSI(14) 觸及 {zone}\n"
+            f"  ▸ RSI 當前值 : {rsi:.1f}  (已從極值反轉)\n"
+            f"  ▸ 量能   : {vol:.1f}× 均量\n"
+            f"  ▸ 蠟燭實體 : {body*100:.0f}%\n"
+            f"  失效條件 : RSI 回到極值區"
+        )
+
+    if strategy == "MACD_CROSS":
+        cross = "負 → 正 (做多)" if direction == "LONG" else "正 → 負 (做空)"
+        return (
+            f"  ▸ 大方向 (EMA200) : {'多頭' if direction == 'LONG' else '空頭'}\n"
+            f"  ▸ MACD 柱狀圖 : {cross}\n"
+            f"  ▸ 交叉前確認 : 對側至少 2 根柱\n"
+            f"  ▸ 量能   : {vol:.1f}× 均量\n"
+            f"  ▸ 蠟燭實體 : {body*100:.0f}%\n"
+            f"  失效條件 : 柱狀圖再次反轉"
+        )
+
+    if strategy == "BB_BREAKOUT":
+        bw = conv.get("bandwidth", 0)
+        return (
+            f"  ▸ 大方向 (EMA200) : {'多頭' if direction == 'LONG' else '空頭'}\n"
+            f"  ▸ 突破前 BB 帶寬 : {bw:.2f}%  (收縮 2 根以上)\n"
+            f"  ▸ 收盤突破 {'上軌' if direction == 'LONG' else '下軌'}\n"
+            f"  ▸ 量能   : {vol:.1f}× 均量\n"
+            f"  ▸ 蠟燭實體 : {body*100:.0f}%\n"
+            f"  失效條件 : 收盤回到布林帶內"
+        )
+
+    if strategy == "EMA_CROSS_FAST":
+        cross = "EMA9 上穿 EMA21 (做多)" if direction == "LONG" else "EMA9 下穿 EMA21 (做空)"
+        return (
+            f"  ▸ 大方向 (EMA200) : {'多頭' if direction == 'LONG' else '空頭'}\n"
+            f"  ▸ 1H {cross}\n"
+            f"  ▸ 量能   : {vol:.1f}× 均量\n"
+            f"  ▸ 蠟燭實體 : {body*100:.0f}%\n"
+            f"  失效條件 : EMA9 再次回穿 EMA21"
+        )
+
+    if strategy == "SWING_BREAK":
+        level = "8根最高點" if direction == "LONG" else "8根最低點"
+        return (
+            f"  ▸ 大方向 (EMA200) : {'多頭' if direction == 'LONG' else '空頭'}\n"
+            f"  ▸ 收盤突破近 {level}\n"
+            f"  ▸ 量能   : {vol:.1f}× 均量  (需 ≥ 1.8×)\n"
+            f"  ▸ 蠟燭實體 : {body*100:.0f}%\n"
+            f"  失效條件 : 收盤跌回突破點下方"
+        )
+
+    if strategy == "OI_LS_SIGNAL":
+        oi_pct   = conf.get("oi_change_pct", 0)
+        long_pct = conf.get("long_pct", 50)
+        side     = "淨多頭升高" if direction == "LONG" else "淨空頭升高"
+        return (
+            f"  ▸ 純數據策略（不依賴均線）\n"
+            f"  ▸ OI 6H 變化 : +{oi_pct:.1f}%  (異常資金進場)\n"
+            f"  ▸ 多頭帳戶佔比 : {long_pct:.1f}%  ({side})\n"
+            f"  ▸ 量能   : {vol:.1f}× 均量\n"
+            f"  ▸ 蠟燭實體 : {body*100:.0f}%\n"
+            f"  失效條件 : OI 回落 或 多空比反轉"
+        )
+
+    return f"  ▸ 策略：{strategy}\n  ▸ 量能：{vol:.1f}× 均量"
 
 
 def build_setup_embed(result: dict, score: float) -> dict:
-    """建立交易設置的 Discord Embed 物件"""
+    strategy  = result.get("strategy", "EMA_CONVERGENCE")
+    strat_name = STRATEGY_NAMES.get(strategy, strategy)
     symbol    = result["symbol"]
     direction = result["direction"]
     levels    = result["levels"]
-    conv      = result["convergence"]
-    conf      = result["confirm_1h"]
-
     entry     = levels["entry"]
     sl        = levels["stop_loss"]
     t1        = levels["target1"]
     t2        = levels["target2"]
-    pullback  = conf["pullback_entry"]
 
-    # 到期時間
-    now_tw    = datetime.now(TW_TZ)
+    now_tw    = _now_tw()
     expire_tw = now_tw + timedelta(hours=MAX_HOLD_HOURS)
-    expire_str = expire_tw.strftime("%Y/%m/%d %H:%M TWN")
+    in_session = 15 <= now_tw.hour < 22
 
-    # 歐美盤判斷
-    in_session = TW_TZ and (15 <= now_tw.hour < 22)
-    session_str = "✅ EU/US Session" if in_session else "⚪ Off Session"
-
-    # 顏色選擇
     if score < 7.0:
         color = COLOR_MARGINAL
     elif direction == "LONG":
@@ -70,67 +171,54 @@ def build_setup_embed(result: dict, score: float) -> dict:
     else:
         color = COLOR_SHORT
 
-    icon  = "🟢" if direction == "LONG" else "🔴"
-    rr1   = abs(t1 - entry) / abs(entry - sl) if abs(entry - sl) > 0 else 0
-    rr2   = abs(t2 - entry) / abs(entry - sl) if abs(entry - sl) > 0 else 0
+    icon = "🟢" if direction == "LONG" else "🔴"
+    rr1  = abs(t1 - entry) / abs(entry - sl) if abs(entry - sl) > 0 else 0
+    rr2  = abs(t2 - entry) / abs(entry - sl) if abs(entry - sl) > 0 else 0
+    session_str = "✅ EU/US Session" if in_session else "⚪ Off Session"
+
+    logic_block = _strategy_logic_block(result)
 
     description = (
-        f"**📊 Setup**\n"
+        f"**📌 策略：{strat_name}**\n"
         f"```\n"
-        f"  4H Bandwidth : {conv['bandwidth']:.2f}%  (compressed {conv['compression_bars']} bars)\n"
-        f"  Breakout Vol : {result['vol_ratio']:.1f}× average\n"
-        f"  EMA 200 Bias : {'Above → LONG only' if direction == 'LONG' else 'Below → SHORT only'}\n"
-        f"  Session      : {session_str} ({now_tw.strftime('%H:%M TWN')})\n"
+        f"{logic_block}\n"
         f"```\n"
-        f"**💰 Trade Levels**\n"
+        f"**💰 交易水位**\n"
         f"```\n"
-        f"  Entry Now    : ${_fmt_price(entry)}\n"
-        f"  Ideal Entry  : ${_fmt_price(pullback)}  (pullback to EMA30 1H)\n"
-        f"  Stop Loss    : ${_fmt_price(sl)}  ({_pct(sl, entry)})\n"
-        f"  Target 1     : ${_fmt_price(t1)}  (+{rr1:.1f}R / {_pct(t1, entry)})\n"
-        f"  Target 2     : ${_fmt_price(t2)}  (+{rr2:.1f}R / {_pct(t2, entry)})\n"
-        f"  Max Hold     : {MAX_HOLD_HOURS} hrs → exit by {expire_str}\n"
+        f"  進場價  : ${_fp(entry)}\n"
+        f"  止  損  : ${_fp(sl)}  ({_pct(sl, entry)})\n"
+        f"  目標一  : ${_fp(t1)}  (+{rr1:.1f}R / {_pct(t1, entry)})\n"
+        f"  目標二  : ${_fp(t2)}  (+{rr2:.1f}R / {_pct(t2, entry)})\n"
+        f"  到期時間: {expire_tw.strftime('%m/%d %H:%M TWN')} ({MAX_HOLD_HOURS}h)\n"
         f"```\n"
-        f"**⚠️ Invalidation**\n"
-        f"If price closes back inside EMA cluster → exit immediately\n\n"
-        f"─────────────────────────────\n"
-        f"EMA Convergence Scanner • {_now_tw_str()}"
+        f"{session_str}  •  {now_tw.strftime('%Y/%m/%d %H:%M TWN')}"
     )
 
     return {
-        "title":       f"{icon} {direction} Setup — {symbol}                     [Score: {score} / 10]",
+        "title":       f"{icon} {direction} — {symbol}   [Score: {score}/10]",
         "description": description,
         "color":       color,
     }
 
 
 def build_no_setup_embed(total: int, converging: int) -> dict:
-    """建立無訊號的摘要 Embed"""
     return {
-        "title":       "🔍 Scan complete — no setups above threshold",
+        "title":       "🔍 掃描完成 — 無達標訊號",
         "description": (
-            f"Scanned: **{total}** coins  |  "
-            f"Converging: **{converging}**  |  "
-            f"Breaking out: **0**\n"
-            f"Next scan: 60 min"
+            f"掃描幣種：**{total}**  |  觸發中：**{converging}**\n"
+            f"下次掃描：60 分鐘後"
         ),
         "color": 0x888888,
     }
 
 
 def send_embeds(embeds: list[dict]) -> bool:
-    """
-    批次發送 Embeds（Discord 單次最多 10 個）
-    回傳是否全部成功
-    """
     if not WEBHOOK_URL:
         print("[Discord] 未設定 DISCORD_WEBHOOK_URL，跳過發送")
         return False
-
     success = True
-    # 每批最多 10 個 embed
     for i in range(0, len(embeds), 10):
-        batch = embeds[i:i + 10]
+        batch   = embeds[i:i + 10]
         payload = {"embeds": batch}
         try:
             resp = requests.post(WEBHOOK_URL, json=payload, timeout=10)
@@ -140,18 +228,14 @@ def send_embeds(embeds: list[dict]) -> bool:
         except Exception as e:
             print(f"[Discord] 發送異常：{e}")
             success = False
-
     return success
 
 
 def send_setup_alerts(results_with_scores: list[tuple[dict, float]]) -> None:
-    """發送所有達標交易設置通知"""
     embeds = [build_setup_embed(r, s) for r, s in results_with_scores]
     if embeds:
         send_embeds(embeds)
 
 
 def send_no_setup_summary(total: int, converging: int) -> None:
-    """發送無訊號摘要"""
-    embed = build_no_setup_embed(total, converging)
-    send_embeds([embed])
+    send_embeds([build_no_setup_embed(total, converging)])

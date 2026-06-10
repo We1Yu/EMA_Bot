@@ -18,7 +18,7 @@ from paper_trader import PaperTrader
 
 TW_TZ           = timezone(timedelta(hours=8))
 KLINES_4H_LIMIT = 500   # ~83 天
-KLINES_1H_LIMIT = 1500  # ~62 天（API 安全上限）
+KLINES_1H_LIMIT = 1440  # ~60 天（BingX API 硬上限）
 MIN_4H_BARS     = 250   # EMA200 至少需要 200 根
 
 
@@ -160,14 +160,15 @@ def print_backtest_report(result: dict) -> None:
     print(f"{'='*62}")
     print(f"  初始資金：  ${s['initial_balance']:>12,.2f}")
     print(f"  最終餘額：  ${s['current_balance']:>12,.2f}")
-    print(f"  總損益：    ${s['total_pnl']:>+12,.2f}  ({s['total_return_pct']:+.2f}%)")
-    print(f"  最大回撤：  {s['max_drawdown_pct']:.2f}%")
+    print(f"  總損益：    ${s.get('total_pnl', 0.0):>+12,.2f}  ({s.get('total_return_pct', 0.0):+.2f}%)")
+    print(f"  最大回撤：  {s.get('max_drawdown_pct', 0.0):.2f}%")
     print(f"  觸發訊號：  {s.get('total_signals', 0)} 次")
-    print(f"  完整平倉：  {s['full_closes']} 筆")
-    print(f"  勝率：      {s['win_rate_pct']:.1f}%  (勝 {s['wins']} / 敗 {s['losses']})")
-    print(f"  平均獲利：  ${s['avg_win']:>+12,.2f}")
-    print(f"  平均虧損：  ${s['avg_loss']:>+12,.2f}")
-    print(f"  獲利因子：  {s['profit_factor']:.2f}")
+    print(f"  完整平倉：  {s.get('full_closes', 0)} 筆")
+    print(f"  勝率：      {s.get('win_rate_pct', 0):.1f}%  (勝 {s.get('wins', 0)} / 敗 {s.get('losses', 0)})")
+    print(f"  平均獲利：  ${s.get('avg_win', 0):>+12,.2f}")
+    print(f"  平均虧損：  ${s.get('avg_loss', 0):>+12,.2f}")
+    pf = s.get('profit_factor')
+    print(f"  獲利因子：  {f'{pf:.2f}' if pf is not None else 'N/A'}")
     print(f"{'='*62}")
 
     if trades:
@@ -202,7 +203,8 @@ def print_multi_summary(results: dict) -> None:
     print(f"  總勝率：  {sm['win_rate_pct']:.1f}%  (勝 {sm['wins']} / 敗 {sm['losses']})")
     print(f"  總損益：  ${sm['total_pnl']:+,.2f}")
     print(f"  每筆均損益：${sm['avg_pnl_per_close']:+,.2f}")
-    print(f"  獲利因子：{sm['profit_factor']:.2f}")
+    pf = sm.get('profit_factor')
+    print(f"  獲利因子：{f'{pf:.2f}' if pf is not None else 'N/A'}")
     print(f"{'='*55}")
 
 

@@ -217,32 +217,46 @@
 
     <!-- Stat cards -->
     <div class="row g-3 mb-4">
-      <div class="col-6 col-md-3">
+      <div class="col-6 col-md-2">
         <div class="card-s h-100">
           <div class="stat-label"><i class="fas fa-wallet me-1"></i>帳戶餘額</div>
           <div class="stat-num" id="s-balance">—</div>
           <div class="stat-sub" id="s-return">—</div>
         </div>
       </div>
-      <div class="col-6 col-md-3">
+      <div class="col-6 col-md-2">
+        <div class="card-s h-100">
+          <div class="stat-label"><i class="fas fa-chart-line me-1"></i>未實現損益</div>
+          <div class="stat-num" id="s-upnl">—</div>
+          <div class="stat-sub" id="s-notional">—</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="card-s h-100">
+          <div class="stat-label"><i class="fas fa-layer-group me-1"></i>持倉中</div>
+          <div class="stat-num" id="s-open">—</div>
+          <div class="stat-sub" id="s-open-sub">虛擬部位</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-2">
         <div class="card-s h-100">
           <div class="stat-label"><i class="fas fa-bullseye me-1"></i>勝率</div>
           <div class="stat-num" id="s-winrate">—</div>
           <div class="stat-sub" id="s-wl">—</div>
         </div>
       </div>
-      <div class="col-6 col-md-3">
+      <div class="col-6 col-md-2">
         <div class="card-s h-100">
           <div class="stat-label"><i class="fas fa-scale-balanced me-1"></i>獲利因子</div>
           <div class="stat-num" id="s-pf">—</div>
           <div class="stat-sub" id="s-dd">—</div>
         </div>
       </div>
-      <div class="col-6 col-md-3">
+      <div class="col-6 col-md-2">
         <div class="card-s h-100">
-          <div class="stat-label"><i class="fas fa-layer-group me-1"></i>持倉中</div>
-          <div class="stat-num" id="s-open">—</div>
-          <div class="stat-sub">虛擬部位</div>
+          <div class="stat-label"><i class="fas fa-arrow-trend-down me-1"></i>最大回撤</div>
+          <div class="stat-num" id="s-mdd">—</div>
+          <div class="stat-sub" id="s-trades">—</div>
         </div>
       </div>
     </div>
@@ -284,22 +298,7 @@
   <!-- ②  持倉中 ─────────────────────────────────────── -->
   <div class="section" id="sec-positions">
     <div class="page-title"><i class="fas fa-layer-group me-2" style="color:var(--accent)"></i>持倉中</div>
-    <div class="card-s">
-      <div class="table-responsive table-scroll">
-        <table class="table table-sm mb-0">
-          <thead>
-            <tr>
-              <th>幣種</th><th>方向</th><th>進場價</th>
-              <th>止損 SL</th><th>目標一 TP1</th><th>目標二 TP2</th>
-              <th>分數</th><th>狀態</th><th>開倉時間</th>
-            </tr>
-          </thead>
-          <tbody id="pos-body">
-            <tr><td colspan="9" class="text-center neu py-4">載入中...</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <div id="pos-cards"><div class="neu text-center py-5">載入中...</div></div>
   </div>
 
   <!-- ③  交易紀錄 ─────────────────────────────────────── -->
@@ -372,7 +371,7 @@
       <div class="table-responsive table-scroll">
         <table class="table table-sm mb-0">
           <thead>
-            <tr><th>時間</th><th>幣種</th><th>方向</th><th>分數</th><th>進場</th><th>止損</th><th>TP1</th><th>帶寬</th></tr>
+            <tr><th>時間</th><th>幣種</th><th>策略</th><th>方向</th><th>分數</th><th>進場</th><th>止損</th><th>TP1</th></tr>
           </thead>
           <tbody id="signals-body">
             <tr><td colspan="8" class="text-center neu py-4">載入中...</td></tr>
@@ -408,196 +407,540 @@
 
   <!-- ⑥  策略說明 ─────────────────────────────────────── -->
   <div class="section" id="sec-strategy">
-    <div class="page-title"><i class="fas fa-book-open me-2" style="color:var(--accent)"></i>策略說明</div>
-    <div class="row g-4" style="max-width:900px;">
+    <div class="page-title"><i class="fas fa-book-open me-2" style="color:var(--accent)"></i>策略說明 &amp; 參數設定</div>
 
-      <!-- Core concept -->
-      <div class="col-12">
-        <div class="card-s">
-          <div class="fw-semibold mb-2 text-white">核心概念：EMA 收斂突破</div>
-          <p class="neu mb-0" style="line-height:1.75;">
-            當短期四條 EMA（15 / 30 / 45 / 60）逐漸靠攏，代表市場進入盤整、能量壓縮。
-            一旦某方向的力量爆發帶量突破壓縮區，通常產生一段較純的趨勢行情。
-            本策略結合 <strong class="text-white">4H 壓縮 + 突破</strong> 與 <strong class="text-white">1H 確認</strong>，
-            在 EMA200 趨勢方向一致的前提下進場。
-          </p>
-        </div>
-      </div>
+    <!-- Strategy overview chips -->
+    <div class="d-flex flex-wrap gap-2 mb-4">
+      <span onclick="document.getElementById('acc-ema-conv').scrollIntoView({behavior:'smooth'})" class="strat-chip" style="--sc:#8957e5;">① EMA 收斂突破</span>
+      <span onclick="document.getElementById('acc-ema-pull').scrollIntoView({behavior:'smooth'})" class="strat-chip" style="--sc:#58a6ff;">② EMA30 回測反彈</span>
+      <span onclick="document.getElementById('acc-rsi').scrollIntoView({behavior:'smooth'})"      class="strat-chip" style="--sc:#d29922;">③ RSI 極值反彈</span>
+      <span onclick="document.getElementById('acc-macd').scrollIntoView({behavior:'smooth'})"     class="strat-chip" style="--sc:#3fb950;">④ MACD 柱狀圖交叉</span>
+      <span onclick="document.getElementById('acc-bb').scrollIntoView({behavior:'smooth'})"       class="strat-chip" style="--sc:#f0883e;">⑤ 布林帶收縮突破</span>
+      <span onclick="document.getElementById('acc-ema-fast').scrollIntoView({behavior:'smooth'})" class="strat-chip" style="--sc:#79c0ff;">⑥ EMA 快速交叉</span>
+      <span onclick="document.getElementById('acc-swing').scrollIntoView({behavior:'smooth'})"    class="strat-chip" style="--sc:#ff7b72;">⑦ 擺幅突破</span>
+      <span onclick="document.getElementById('acc-oi').scrollIntoView({behavior:'smooth'})"       class="strat-chip" style="--sc:#bc8cff;">⑧ OI 多空比</span>
+      <span onclick="document.getElementById('sec-params').scrollIntoView({behavior:'smooth'})"   class="strat-chip" style="--sc:#8b949e;">⚙ 如何修改參數</span>
+    </div>
 
-      <!-- Entry conditions -->
-      <div class="col-12">
-        <div class="card-s">
-          <div class="fw-semibold mb-3 text-white"><i class="fas fa-list-check me-2 pos"></i>進場條件（4 個步驟全部通過）</div>
-          <div class="row g-3">
-            <div class="col-12 col-md-6">
-              <div class="step-block">
-                <div class="d-flex align-items-center gap-2 mb-2">
-                  <span class="step-num">STEP 1</span>
-                  <strong>4H EMA 收斂</strong>
-                </div>
-                <ul class="mb-0 neu" style="padding-left:1.1rem; line-height:1.85;">
-                  <li>帶寬 = (EMA 群最高 − 最低) ÷ EMA60 × 100</li>
-                  <li>當前帶寬 <code>&lt; 2%</code></li>
-                  <li>帶寬連續遞減 ≥ <code>3 根</code> 4H K 棒</li>
+    <style>
+      .strat-chip {
+        background: color-mix(in srgb, var(--sc) 15%, transparent);
+        color: var(--sc); border: 1px solid color-mix(in srgb, var(--sc) 35%, transparent);
+        padding: 4px 12px; border-radius: 20px; font-size: .8rem;
+        cursor: pointer; user-select: none; transition: opacity .15s;
+      }
+      .strat-chip:hover { opacity: .8; }
+      .param-table td:first-child { white-space: nowrap; color: var(--muted); width: 46%; }
+      .param-table td:last-child  { font-family: monospace; color: #79c0ff; }
+      .strat-header { display: flex; align-items: center; gap: 10px; }
+      .strat-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+      .cond-list { padding-left: 1.1rem; line-height: 1.9; margin: 0; }
+      .cond-list li { color: var(--muted); }
+      .cond-list li strong { color: var(--text); }
+    </style>
+
+    <!-- ══ Accordion ══ -->
+    <div class="accordion mb-4" id="stratAccordion" style="max-width:900px;">
+
+      <!-- ① EMA 收斂突破 -->
+      <div class="accordion-item" id="acc-ema-conv" style="background:var(--surface); border:1px solid var(--border); border-radius:8px; margin-bottom:8px;">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#c1"
+            style="background:var(--surface); color:var(--text); border-radius:8px; font-size:.875rem;">
+            <div class="strat-header">
+              <div class="strat-dot" style="background:#8957e5;"></div>
+              <strong>① EMA 收斂突破</strong>
+              <span class="ms-2 neu" style="font-size:.78rem;">EMA_CONVERGENCE &nbsp;|&nbsp; 4H 主導 + 1H 確認 &nbsp;|&nbsp; 最高品質</span>
+            </div>
+          </button>
+        </h2>
+        <div id="c1" class="accordion-collapse collapse show">
+          <div class="accordion-body" style="background:var(--bg); border-radius:0 0 8px 8px;">
+            <div class="row g-3">
+              <div class="col-12 col-md-6">
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#8957e5;">觸發條件</div>
+                <ul class="cond-list">
+                  <li>4H EMA(15/30/45/60) 帶寬 <strong>&lt; 2%</strong></li>
+                  <li>帶寬連續遞減 <strong>≥ 3 根</strong> 4H K棒</li>
+                  <li>帶寬從上一根開始<strong>擴張</strong>（突破啟動）</li>
+                  <li>突破量能 <strong>≥ 前5根均量 × 1.5</strong></li>
+                  <li>收盤在 EMA200 同方向側（距離 <strong>&gt; 1%</strong>）</li>
+                  <li>1H 收盤在 EMA60 同側，實體比 <strong>≥ 60%</strong></li>
+                  <li>1H EMA15 在最近 <strong>3 根內</strong>穿越 EMA30</li>
                 </ul>
               </div>
-            </div>
-            <div class="col-12 col-md-6">
-              <div class="step-block">
-                <div class="d-flex align-items-center gap-2 mb-2">
-                  <span class="step-num">STEP 2</span>
-                  <strong>4H 帶量突破</strong>
-                </div>
-                <ul class="mb-0 neu" style="padding-left:1.1rem; line-height:1.85;">
-                  <li>帶寬從上一根開始<strong class="text-white">擴張</strong></li>
-                  <li>量能 ≥ 前 5 根均量的 <code>1.5 倍</code></li>
-                  <li>收盤在 EMA60 上方 → <span class="pos fw-bold">LONG</span></li>
-                  <li>收盤在 EMA60 下方 → <span class="neg fw-bold">SHORT</span></li>
-                </ul>
-              </div>
-            </div>
-            <div class="col-12 col-md-6">
-              <div class="step-block">
-                <div class="d-flex align-items-center gap-2 mb-2">
-                  <span class="step-num" style="background:var(--warn); color:#000;">STEP 3</span>
-                  <strong>EMA200 趨勢過濾</strong>
-                </div>
-                <ul class="mb-0 neu" style="padding-left:1.1rem; line-height:1.85;">
-                  <li>LONG：收盤必須在 EMA200 <strong class="text-white">上方</strong></li>
-                  <li>SHORT：收盤必須在 EMA200 <strong class="text-white">下方</strong></li>
-                  <li>距 EMA200 <code>&lt; 1%</code> 則跳過（避免卡關）</li>
-                </ul>
-              </div>
-            </div>
-            <div class="col-12 col-md-6">
-              <div class="step-block">
-                <div class="d-flex align-items-center gap-2 mb-2">
-                  <span class="step-num" style="background:var(--pos);">STEP 4</span>
-                  <strong>1H 確認</strong>
-                </div>
-                <ul class="mb-0 neu" style="padding-left:1.1rem; line-height:1.85;">
-                  <li>收盤方向與突破方向一致（在 EMA60 同側）</li>
-                  <li>蠟燭實體比例 ≥ <code>60%</code>（過濾假突破）</li>
-                  <li>EMA15 剛穿越 EMA30（最近兩根確認交叉）</li>
-                </ul>
+              <div class="col-12 col-md-6">
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#8957e5;">參數（<code>scanner.py</code> 頂部）</div>
+                <table class="table table-sm param-table mb-2">
+                  <tbody>
+                    <tr><td>BANDWIDTH_THRESHOLD</td><td>2.0 &nbsp;<span class="neu">%，帶寬門檻</span></td></tr>
+                    <tr><td>COMPRESSION_BARS</td><td>3 &nbsp;<span class="neu">根，最少壓縮數</span></td></tr>
+                    <tr><td>BREAKOUT_VOL_RATIO</td><td>1.5 &nbsp;<span class="neu">×，突破量比</span></td></tr>
+                    <tr><td>BODY_RATIO_MIN</td><td>0.60 &nbsp;<span class="neu">（60%），1H 實體</span></td></tr>
+                    <tr><td>EMA200_SKIP_PCT</td><td>0.01 &nbsp;<span class="neu">（1%），太近跳過</span></td></tr>
+                    <tr><td>CROSS_LOOKBACK</td><td>3 &nbsp;<span class="neu">根，EMA 交叉回看</span></td></tr>
+                  </tbody>
+                </table>
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#8957e5;">止損計算</div>
+                <div class="neu small">LONG：壓縮區最低 − 0.5 ATR(14)<br>SHORT：壓縮區最高 + 0.5 ATR(14)</div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Trade levels + Risk -->
-      <div class="col-12 col-md-6">
-        <div class="card-s h-100">
-          <div class="fw-semibold mb-3 text-white"><i class="fas fa-crosshairs me-2 warn"></i>交易水位計算</div>
-          <table class="table table-sm mb-2">
-            <tbody>
-              <tr><td class="neu">進場價</td><td>4H 收盤價</td></tr>
-              <tr>
-                <td class="neu">止損 (SL)</td>
-                <td class="neg">
-                  LONG：收斂區最低 − 0.5 ATR<br>
-                  SHORT：收斂區最高 + 0.5 ATR
-                </td>
-              </tr>
-              <tr><td class="neu">目標一 (TP1)</td><td class="pos">進場 ± 1.5R → 平倉 50%，SL 移成本</td></tr>
-              <tr><td class="neu">目標二 (TP2)</td><td class="pos">進場 ± 2.5R → 平倉剩餘 50%</td></tr>
-              <tr><td class="neu">理想回測進場</td><td>1H EMA30（等拉回進，風險更小）</td></tr>
-            </tbody>
-          </table>
-          <p class="neu small mb-0"><i class="fas fa-info-circle me-1"></i>收斂區間取壓縮期間最高 / 最低點。</p>
-        </div>
-      </div>
-      <div class="col-12 col-md-6">
-        <div class="card-s h-100">
-          <div class="fw-semibold mb-3 text-white"><i class="fas fa-shield-halved me-2 neg"></i>資金管理</div>
-          <table class="table table-sm mb-2">
-            <tbody>
-              <tr><td class="neu">每筆風險</td><td>帳戶淨值 × <code>2%</code></td></tr>
-              <tr><td class="neu">合約數</td><td>風險金額 ÷ |進場 − 止損|</td></tr>
-              <tr><td class="neu">TP1 出場</td><td class="pos">平倉 50%，止損移到成本（保本）</td></tr>
-              <tr><td class="neu">TP2 出場</td><td class="pos">平倉剩餘 50%</td></tr>
-              <tr><td class="neu">最大持倉時間</td><td>48 小時</td></tr>
-              <tr><td class="neu">失效條件</td><td class="neg">收盤回到 EMA 群內 → 立即出場</td></tr>
-            </tbody>
-          </table>
+      <!-- ② EMA30 回測 -->
+      <div class="accordion-item" id="acc-ema-pull" style="background:var(--surface); border:1px solid var(--border); border-radius:8px; margin-bottom:8px;">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#c2"
+            style="background:var(--surface); color:var(--text); border-radius:8px; font-size:.875rem;">
+            <div class="strat-header">
+              <div class="strat-dot" style="background:#58a6ff;"></div>
+              <strong>② EMA30 回測反彈</strong>
+              <span class="ms-2 neu" style="font-size:.78rem;">EMA_PULLBACK &nbsp;|&nbsp; 1H &nbsp;|&nbsp; 趨勢延續進場</span>
+            </div>
+          </button>
+        </h2>
+        <div id="c2" class="accordion-collapse collapse">
+          <div class="accordion-body" style="background:var(--bg); border-radius:0 0 8px 8px;">
+            <div class="row g-3">
+              <div class="col-12 col-md-6">
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#58a6ff;">觸發條件</div>
+                <ul class="cond-list">
+                  <li>4H EMA200 方向確認大趨勢</li>
+                  <li>1H EMA15/EMA30 排列與大方向一致</li>
+                  <li>1H 現價在 EMA60 正確側</li>
+                  <li>前一根K棒高/低距 EMA30 <strong>≤ 0.5%</strong>（觸碰回測）</li>
+                  <li>當根收盤確認反彈（越過 EMA30），為方向蠟燭</li>
+                  <li>實體比 <strong>≥ 55%</strong></li>
+                  <li>量能 <strong>≥ 前5根均量 × 1.2</strong></li>
+                </ul>
+              </div>
+              <div class="col-12 col-md-6">
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#58a6ff;">參數（<code>scanner.py</code> 頂部）</div>
+                <table class="table table-sm param-table mb-2">
+                  <tbody>
+                    <tr><td>EMA_PULLBACK_TOUCH_PCT</td><td>0.005 &nbsp;<span class="neu">（0.5%），觸碰範圍</span></td></tr>
+                    <tr><td>EMA_PULLBACK_VOL_RATIO</td><td>1.2 &nbsp;<span class="neu">×，最低量比</span></td></tr>
+                    <tr><td>實體比（硬編碼）</td><td>0.55 &nbsp;<span class="neu">（55%）</span></td></tr>
+                  </tbody>
+                </table>
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#58a6ff;">止損計算</div>
+                <div class="neu small">LONG：min(前根低點, EMA30) − 0.5 ATR<br>SHORT：max(前根高點, EMA30) + 0.5 ATR</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- Scoring -->
-      <div class="col-12">
-        <div class="card-s">
-          <div class="fw-semibold mb-3 text-white"><i class="fas fa-star-half-stroke me-2 warn"></i>評分系統（滿分 10 分，≥ 6 分才推播）</div>
-          <div class="table-responsive">
-            <table class="table table-sm mb-3">
-              <thead><tr><th>項目</th><th>條件</th><th class="text-end">加分</th></tr></thead>
-              <tbody>
-                <tr><td rowspan="3" class="align-middle">帶寬壓縮</td><td class="neu">帶寬 &lt; 1.0%</td><td class="pos text-end">+2.0</td></tr>
-                <tr><td class="neu">1.0%–1.5%</td><td class="pos text-end">+1.0</td></tr>
-                <tr><td class="neu">1.5%–2.0%</td><td class="pos text-end">+0.5</td></tr>
-                <tr><td rowspan="2" class="align-middle">壓縮持續</td><td class="neu">≥ 5 根</td><td class="pos text-end">+2.0</td></tr>
-                <tr><td class="neu">3–4 根</td><td class="pos text-end">+1.0</td></tr>
-                <tr><td rowspan="2" class="align-middle">突破量能</td><td class="neu">量比 ≥ 2.0×</td><td class="pos text-end">+2.0</td></tr>
-                <tr><td class="neu">量比 1.5×–2.0×</td><td class="pos text-end">+1.0</td></tr>
-                <tr><td rowspan="2" class="align-middle">1H 實體比</td><td class="neu">≥ 70%</td><td class="pos text-end">+1.0</td></tr>
-                <tr><td class="neu">60%–70%</td><td class="pos text-end">+0.5</td></tr>
-                <tr><td>EMA200 方向</td><td class="neu">通過趨勢過濾（固定）</td><td class="pos text-end">+1.0</td></tr>
-                <tr><td>1H EMA 交叉</td><td class="neu">通過 1H 確認（固定）</td><td class="pos text-end">+1.0</td></tr>
-                <tr style="border-top:2px solid var(--border)"><td>歐美盤加分</td><td class="neu">台灣時間 15:00–22:00</td><td class="pos text-end">+1.0</td></tr>
+      <!-- ③ RSI 反彈 -->
+      <div class="accordion-item" id="acc-rsi" style="background:var(--surface); border:1px solid var(--border); border-radius:8px; margin-bottom:8px;">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#c3"
+            style="background:var(--surface); color:var(--text); border-radius:8px; font-size:.875rem;">
+            <div class="strat-header">
+              <div class="strat-dot" style="background:#d29922;"></div>
+              <strong>③ RSI 極值反彈</strong>
+              <span class="ms-2 neu" style="font-size:.78rem;">RSI_BOUNCE &nbsp;|&nbsp; 1H &nbsp;|&nbsp; 超買超賣反轉</span>
+            </div>
+          </button>
+        </h2>
+        <div id="c3" class="accordion-collapse collapse">
+          <div class="accordion-body" style="background:var(--bg); border-radius:0 0 8px 8px;">
+            <div class="row g-3">
+              <div class="col-12 col-md-6">
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#d29922;">觸發條件</div>
+                <ul class="cond-list">
+                  <li>4H EMA200 方向確認大趨勢</li>
+                  <li>最近 2 根 1H RSI(14) 曾觸及超賣 <strong>≤ 35</strong>（LONG）或超買 <strong>≥ 65</strong>（SHORT）</li>
+                  <li>當根 RSI 已開始<strong>反轉</strong>（方向改變）</li>
+                  <li>當根為方向蠟燭，實體比 <strong>≥ 50%</strong></li>
+                  <li>量能 <strong>≥ 前5根均量 × 1.2</strong></li>
+                </ul>
+              </div>
+              <div class="col-12 col-md-6">
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#d29922;">參數（<code>scanner.py</code> 頂部）</div>
+                <table class="table table-sm param-table mb-2">
+                  <tbody>
+                    <tr><td>RSI_PERIOD</td><td>14 &nbsp;<span class="neu">週期</span></td></tr>
+                    <tr><td>RSI_OVERSOLD</td><td>35 &nbsp;<span class="neu">超賣線（做多觸發）</span></td></tr>
+                    <tr><td>RSI_OVERBOUGHT</td><td>65 &nbsp;<span class="neu">超買線（做空觸發）</span></td></tr>
+                    <tr><td>RSI_VOL_RATIO</td><td>1.2 &nbsp;<span class="neu">×，最低量比</span></td></tr>
+                  </tbody>
+                </table>
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#d29922;">止損計算</div>
+                <div class="neu small">最近 3 根 1H 低/高點 ± 0.3 ATR</div>
+                <div class="mt-2 neu small"><i class="fas fa-star me-1" style="color:#d29922;"></i>RSI &lt; 25（LONG）或 &gt; 75（SHORT）可獲評分加分</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ④ MACD 交叉 -->
+      <div class="accordion-item" id="acc-macd" style="background:var(--surface); border:1px solid var(--border); border-radius:8px; margin-bottom:8px;">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#c4"
+            style="background:var(--surface); color:var(--text); border-radius:8px; font-size:.875rem;">
+            <div class="strat-header">
+              <div class="strat-dot" style="background:#3fb950;"></div>
+              <strong>④ MACD 柱狀圖交叉</strong>
+              <span class="ms-2 neu" style="font-size:.78rem;">MACD_CROSS &nbsp;|&nbsp; 1H &nbsp;|&nbsp; 動能翻轉確認</span>
+            </div>
+          </button>
+        </h2>
+        <div id="c4" class="accordion-collapse collapse">
+          <div class="accordion-body" style="background:var(--bg); border-radius:0 0 8px 8px;">
+            <div class="row g-3">
+              <div class="col-12 col-md-6">
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#3fb950;">觸發條件</div>
+                <ul class="cond-list">
+                  <li>4H EMA200 方向確認大趨勢</li>
+                  <li>MACD(12,26,9) 柱狀圖本根剛從<strong>負變正</strong>（LONG）或<strong>正變負</strong>（SHORT）</li>
+                  <li>交叉前連續 <strong>≥ 2 根</strong>柱在對側（避免假交叉）</li>
+                  <li>當根為方向蠟燭，實體比 <strong>≥ 45%</strong></li>
+                  <li>量能 <strong>≥ 前5根均量 × 1.2</strong></li>
+                </ul>
+              </div>
+              <div class="col-12 col-md-6">
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#3fb950;">參數（<code>scanner.py</code> 頂部）</div>
+                <table class="table table-sm param-table mb-2">
+                  <tbody>
+                    <tr><td>MACD_LOOKBACK</td><td>2 &nbsp;<span class="neu">根，對側確認數</span></td></tr>
+                    <tr><td>MACD_VOL_RATIO</td><td>1.2 &nbsp;<span class="neu">×，最低量比</span></td></tr>
+                    <tr><td>MACD 週期（硬編碼）</td><td>12 / 26 / 9</td></tr>
+                  </tbody>
+                </table>
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#3fb950;">止損計算</div>
+                <div class="neu small">最近 4 根 1H 低/高點 ± 0.3 ATR</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ⑤ BB 突破 -->
+      <div class="accordion-item" id="acc-bb" style="background:var(--surface); border:1px solid var(--border); border-radius:8px; margin-bottom:8px;">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#c5"
+            style="background:var(--surface); color:var(--text); border-radius:8px; font-size:.875rem;">
+            <div class="strat-header">
+              <div class="strat-dot" style="background:#f0883e;"></div>
+              <strong>⑤ 布林帶收縮突破</strong>
+              <span class="ms-2 neu" style="font-size:.78rem;">BB_BREAKOUT &nbsp;|&nbsp; 1H &nbsp;|&nbsp; 低波動後爆發</span>
+            </div>
+          </button>
+        </h2>
+        <div id="c5" class="accordion-collapse collapse">
+          <div class="accordion-body" style="background:var(--bg); border-radius:0 0 8px 8px;">
+            <div class="row g-3">
+              <div class="col-12 col-md-6">
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#f0883e;">觸發條件</div>
+                <ul class="cond-list">
+                  <li>4H EMA200 方向確認大趨勢</li>
+                  <li>前 <strong>≥ 2 根</strong> 1H K棒 BB 帶寬 <strong>&lt; 6%</strong>（收縮）</li>
+                  <li>當根收盤<strong>突破上軌</strong>（LONG）或<strong>跌破下軌</strong>（SHORT）</li>
+                  <li>當根為方向蠟燭，實體比 <strong>≥ 50%</strong></li>
+                  <li>量能 <strong>≥ 前5根均量 × 1.5</strong></li>
+                </ul>
+              </div>
+              <div class="col-12 col-md-6">
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#f0883e;">參數（<code>scanner.py</code> 頂部）</div>
+                <table class="table table-sm param-table mb-2">
+                  <tbody>
+                    <tr><td>BB_PERIOD</td><td>20 &nbsp;<span class="neu">週期</span></td></tr>
+                    <tr><td>BB_STD</td><td>2.0 &nbsp;<span class="neu">標準差倍數</span></td></tr>
+                    <tr><td>BB_SQUEEZE_PCT</td><td>6.0 &nbsp;<span class="neu">%，收縮門檻</span></td></tr>
+                    <tr><td>BB_SQUEEZE_BARS</td><td>2 &nbsp;<span class="neu">根，最少收縮根數</span></td></tr>
+                    <tr><td>BB_VOL_RATIO</td><td>1.5 &nbsp;<span class="neu">×，最低量比</span></td></tr>
+                  </tbody>
+                </table>
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#f0883e;">止損計算</div>
+                <div class="neu small">BB 中軌 ± 0.5 ATR</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ⑥ EMA 快叉 -->
+      <div class="accordion-item" id="acc-ema-fast" style="background:var(--surface); border:1px solid var(--border); border-radius:8px; margin-bottom:8px;">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#c6"
+            style="background:var(--surface); color:var(--text); border-radius:8px; font-size:.875rem;">
+            <div class="strat-header">
+              <div class="strat-dot" style="background:#79c0ff;"></div>
+              <strong>⑥ EMA 快速交叉</strong>
+              <span class="ms-2 neu" style="font-size:.78rem;">EMA_CROSS_FAST &nbsp;|&nbsp; 1H &nbsp;|&nbsp; EMA9/21 黃金死叉</span>
+            </div>
+          </button>
+        </h2>
+        <div id="c6" class="accordion-collapse collapse">
+          <div class="accordion-body" style="background:var(--bg); border-radius:0 0 8px 8px;">
+            <div class="row g-3">
+              <div class="col-12 col-md-6">
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#79c0ff;">觸發條件</div>
+                <ul class="cond-list">
+                  <li>4H EMA200 方向確認大趨勢</li>
+                  <li>1H EMA(9) 本根剛<strong>上穿</strong> EMA(21)（LONG）或<strong>下穿</strong>（SHORT）</li>
+                  <li>前一根尚未交叉（只看最新一根交叉）</li>
+                  <li>當根為方向蠟燭，實體比 <strong>≥ 50%</strong></li>
+                  <li>量能 <strong>≥ 前5根均量 × 1.2</strong></li>
+                </ul>
+              </div>
+              <div class="col-12 col-md-6">
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#79c0ff;">參數（<code>scanner.py</code> 頂部）</div>
+                <table class="table table-sm param-table mb-2">
+                  <tbody>
+                    <tr><td>EMA_FAST_P</td><td>9 &nbsp;<span class="neu">快線週期</span></td></tr>
+                    <tr><td>EMA_SLOW_P</td><td>21 &nbsp;<span class="neu">慢線週期</span></td></tr>
+                    <tr><td>FAST_CROSS_VOL</td><td>1.2 &nbsp;<span class="neu">×，最低量比</span></td></tr>
+                  </tbody>
+                </table>
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#79c0ff;">止損計算</div>
+                <div class="neu small">最近 3 根 1H 低/高點 ± 0.3 ATR</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ⑦ 擺幅突破 -->
+      <div class="accordion-item" id="acc-swing" style="background:var(--surface); border:1px solid var(--border); border-radius:8px; margin-bottom:8px;">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#c7"
+            style="background:var(--surface); color:var(--text); border-radius:8px; font-size:.875rem;">
+            <div class="strat-header">
+              <div class="strat-dot" style="background:#ff7b72;"></div>
+              <strong>⑦ 擺幅高低點突破</strong>
+              <span class="ms-2 neu" style="font-size:.78rem;">SWING_BREAK &nbsp;|&nbsp; 1H &nbsp;|&nbsp; 近期高低突破</span>
+            </div>
+          </button>
+        </h2>
+        <div id="c7" class="accordion-collapse collapse">
+          <div class="accordion-body" style="background:var(--bg); border-radius:0 0 8px 8px;">
+            <div class="row g-3">
+              <div class="col-12 col-md-6">
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#ff7b72;">觸發條件</div>
+                <ul class="cond-list">
+                  <li>4H EMA200 方向確認大趨勢</li>
+                  <li>當根收盤<strong>突破</strong>前 8 根 1H K棒的最高點（LONG）</li>
+                  <li>或當根收盤<strong>跌破</strong>前 8 根 1H K棒的最低點（SHORT）</li>
+                  <li>當根為方向蠟燭，實體比 <strong>≥ 50%</strong></li>
+                  <li>量能要求<strong>最嚴格</strong>：<strong>≥ 前5根均量 × 1.8</strong></li>
+                </ul>
+              </div>
+              <div class="col-12 col-md-6">
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#ff7b72;">參數（<code>scanner.py</code> 頂部）</div>
+                <table class="table table-sm param-table mb-2">
+                  <tbody>
+                    <tr><td>SWING_LOOKBACK</td><td>8 &nbsp;<span class="neu">根，回看根數</span></td></tr>
+                    <tr><td>SWING_VOL_RATIO</td><td>1.8 &nbsp;<span class="neu">×，最低量比（最嚴）</span></td></tr>
+                  </tbody>
+                </table>
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#ff7b72;">止損計算</div>
+                <div class="neu small">LONG：突破高點 − 0.3 ATR<br>SHORT：突破低點 + 0.3 ATR</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ⑧ OI 多空比 -->
+      <div class="accordion-item" id="acc-oi" style="background:var(--surface); border:1px solid var(--border); border-radius:8px; margin-bottom:8px;">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#c8"
+            style="background:var(--surface); color:var(--text); border-radius:8px; font-size:.875rem;">
+            <div class="strat-header">
+              <div class="strat-dot" style="background:#bc8cff;"></div>
+              <strong>⑧ OI 異常 + 多空比</strong>
+              <span class="ms-2 neu" style="font-size:.78rem;">OI_LS_SIGNAL &nbsp;|&nbsp; 純數據，不用均線 &nbsp;|&nbsp; 需額外 API</span>
+            </div>
+          </button>
+        </h2>
+        <div id="c8" class="accordion-collapse collapse">
+          <div class="accordion-body" style="background:var(--bg); border-radius:0 0 8px 8px;">
+            <div class="row g-3">
+              <div class="col-12 col-md-6">
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#bc8cff;">觸發條件</div>
+                <ul class="cond-list">
+                  <li>OI(未平倉合約) 6 小時內上升 <strong>≥ 2%</strong>（新資金進場）</li>
+                  <li>多頭帳戶佔比 <strong>≥ 52%</strong> 且 6H 內上升 <strong>≥ 2%</strong> → LONG</li>
+                  <li>多頭帳戶佔比 <strong>≤ 48%</strong> 且 6H 內下降 <strong>≥ 2%</strong> → SHORT</li>
+                  <li>方向由數據決定，不看 EMA200</li>
+                  <li>當根為方向蠟燭，實體比 <strong>≥ 40%</strong>（門檻最寬）</li>
+                  <li>量能 <strong>≥ 前5根均量 × 1.2</strong></li>
+                  <li>ATR &gt; 0（流動性確認）</li>
+                </ul>
+              </div>
+              <div class="col-12 col-md-6">
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#bc8cff;">參數（<code>scanner.py</code> 頂部）</div>
+                <table class="table table-sm param-table mb-2">
+                  <tbody>
+                    <tr><td>OI_CHANGE_MIN</td><td>2.0 &nbsp;<span class="neu">%，OI 最小增幅</span></td></tr>
+                    <tr><td>LS_LONG_MIN</td><td>0.52 &nbsp;<span class="neu">（52%），多頭佔比門檻</span></td></tr>
+                    <tr><td>LS_RISE_MIN</td><td>0.02 &nbsp;<span class="neu">（2%），多空比變動量</span></td></tr>
+                    <tr><td>OI_LS_VOL_RATIO</td><td>1.2 &nbsp;<span class="neu">×，最低量比</span></td></tr>
+                  </tbody>
+                </table>
+                <div class="fw-semibold mb-2" style="font-size:.8rem; color:#bc8cff;">止損計算</div>
+                <div class="neu small">LONG：進場 − 2.0 ATR<br>SHORT：進場 + 2.0 ATR<br><span style="color:#bc8cff;">（止損較寬，因無均線錨點）</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- accordion -->
+
+    <!-- ══ 評分系統 ══ -->
+    <div class="card-s mb-4" style="max-width:900px;">
+      <div class="fw-semibold mb-3 text-white"><i class="fas fa-star-half-stroke me-2 warn"></i>評分系統（滿分 10 分，≥ 6 分才推播）</div>
+      <div class="row g-3">
+        <div class="col-12 col-md-6">
+          <div class="neu small mb-2 fw-semibold" style="color:#8957e5;">EMA_CONVERGENCE 專用評分</div>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>項目</th><th>條件</th><th class="text-end">加分</th></tr></thead>
+            <tbody>
+              <tr><td rowspan="3" class="align-middle neu">帶寬壓縮</td><td class="neu">&lt; 1.0%</td><td class="pos text-end">+2.0</td></tr>
+              <tr><td class="neu">1.0%–1.5%</td><td class="pos text-end">+1.0</td></tr>
+              <tr><td class="neu">1.5%–2.0%</td><td class="pos text-end">+0.5</td></tr>
+              <tr><td rowspan="2" class="align-middle neu">壓縮持續</td><td class="neu">≥ 5 根</td><td class="pos text-end">+2.0</td></tr>
+              <tr><td class="neu">3–4 根</td><td class="pos text-end">+1.0</td></tr>
+              <tr><td rowspan="2" class="align-middle neu">突破量能</td><td class="neu">≥ 2.0×</td><td class="pos text-end">+2.0</td></tr>
+              <tr><td class="neu">1.5×–2.0×</td><td class="pos text-end">+1.0</td></tr>
+              <tr><td rowspan="2" class="align-middle neu">1H 實體比</td><td class="neu">≥ 70%</td><td class="pos text-end">+1.0</td></tr>
+              <tr><td class="neu">60%–70%</td><td class="pos text-end">+0.5</td></tr>
+              <tr><td class="neu">EMA200 過濾</td><td class="neu">通過（固定）</td><td class="pos text-end">+1.0</td></tr>
+              <tr><td class="neu">1H EMA 交叉</td><td class="neu">通過（固定）</td><td class="pos text-end">+1.0</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="neu small mb-2 fw-semibold" style="color:#58a6ff;">其他動能策略（②③④⑤⑥⑦）通用評分</div>
+          <table class="table table-sm mb-3">
+            <thead><tr><th>項目</th><th>條件</th><th class="text-end">加分</th></tr></thead>
+            <tbody>
+              <tr><td class="neu">基礎分</td><td class="neu">有效形態</td><td class="pos text-end">+3.0</td></tr>
+              <tr><td rowspan="3" class="align-middle neu">量能</td><td class="neu">≥ 2.0×</td><td class="pos text-end">+2.0</td></tr>
+              <tr><td class="neu">≥ 1.5×</td><td class="pos text-end">+1.5</td></tr>
+              <tr><td class="neu">≥ 1.2×</td><td class="pos text-end">+0.5</td></tr>
+              <tr><td rowspan="3" class="align-middle neu">實體比</td><td class="neu">≥ 75%</td><td class="pos text-end">+2.0</td></tr>
+              <tr><td class="neu">≥ 65%</td><td class="pos text-end">+1.5</td></tr>
+              <tr><td class="neu">≥ 55%</td><td class="pos text-end">+0.5</td></tr>
+              <tr><td class="neu">EMA200 過濾</td><td class="neu">通過</td><td class="pos text-end">+1.0</td></tr>
+              <tr><td class="neu">RSI 極端值</td><td class="neu">&lt;25 or &gt;75（RSI 策略限定）</td><td class="pos text-end">+1.0</td></tr>
+            </tbody>
+          </table>
+          <div class="neu small mb-2 fw-semibold" style="color:#bc8cff;">OI 策略（⑧）專用評分</div>
+          <div class="neu small">基礎3分 + OI升幅(最高+2.5) + 多空偏斜(最高+2) + 量能(最高+1.5) + 實體(最高+1)</div>
+        </div>
+      </div>
+      <hr style="border-color:var(--border); margin:16px 0;">
+      <div class="row g-2 text-center">
+        <div class="col-4">
+          <div class="step-block"><div class="neu small">推播門檻</div><div class="fw-bold warn fs-5">≥ 6.0</div></div>
+        </div>
+        <div class="col-4">
+          <div class="step-block"><div class="neu small">歐美盤加分（台灣時間 15–22 時）</div><div class="fw-bold pos">+1.0</div></div>
+        </div>
+        <div class="col-4">
+          <div class="step-block" style="border-color:var(--pos);"><div class="neu small">滿分上限</div><div class="fw-bold pos fs-5">10.0</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ 如何修改參數 ══ -->
+    <div id="sec-params" class="card-s" style="max-width:900px;">
+      <div class="fw-semibold mb-3 text-white"><i class="fas fa-sliders me-2" style="color:var(--accent)"></i>如何修改參數</div>
+
+      <div class="row g-3 mb-3">
+        <div class="col-12">
+          <div class="step-block" style="border-color:rgba(88,166,255,.35);">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <code style="color:#f0883e;">ema_scanner/scanner.py</code>
+              <span class="neu small">— 所有策略的觸發條件參數都在此檔頂部常數區</span>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm mb-0">
+                <thead><tr><th>變數名稱</th><th>目前值</th><th>說明 &amp; 調整建議</th></tr></thead>
+                <tbody style="font-size:.8rem;">
+                  <tr><td><code>BANDWIDTH_THRESHOLD</code></td><td>2.0</td><td class="neu">帶寬門檻(%)。調小→更嚴格，訊號更少但品質更高；調大→更多訊號但雜訊增加</td></tr>
+                  <tr><td><code>COMPRESSION_BARS</code></td><td>3</td><td class="neu">最少壓縮根數。調高→需要更長壓縮才進場，訊號更少</td></tr>
+                  <tr><td><code>BREAKOUT_VOL_RATIO</code></td><td>1.5</td><td class="neu">突破量比門檻。調高→量能確認更嚴格，假突破更少</td></tr>
+                  <tr><td><code>BODY_RATIO_MIN</code></td><td>0.60</td><td class="neu">1H 蠟燭實體最低比例。調高→只要強力蠟燭才進場</td></tr>
+                  <tr><td><code>EMA200_SKIP_PCT</code></td><td>0.01</td><td class="neu">距 EMA200 太近跳過的距離(1%)。調大→排除更多靠近 EMA200 的情況</td></tr>
+                  <tr><td><code>RSI_OVERSOLD / RSI_OVERBOUGHT</code></td><td>35 / 65</td><td class="neu">RSI 門檻。傳統50/50、謹慎30/70，現在35/65屬於中等嚴格</td></tr>
+                  <tr><td><code>BB_SQUEEZE_PCT</code></td><td>6.0</td><td class="neu">BB 帶寬收縮門檻(%)。調小→要求更緊縮的布林帶</td></tr>
+                  <tr><td><code>SWING_LOOKBACK</code></td><td>8</td><td class="neu">擺幅突破回看根數。調大→需要突破更長期的高低點</td></tr>
+                  <tr><td><code>SWING_VOL_RATIO</code></td><td>1.8</td><td class="neu">擺幅突破量比（最嚴格的策略）。可降至 1.5 增加訊號數</td></tr>
+                  <tr><td><code>OI_CHANGE_MIN</code></td><td>2.0</td><td class="neu">OI 最小增幅(%)。調高→只有資金大量湧入才觸發</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-md-6">
+          <div class="step-block" style="border-color:rgba(210,153,34,.35);">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <code style="color:#f0883e;">ema_scanner/scorer.py</code>
+              <span class="neu small">— 評分與推播門檻</span>
+            </div>
+            <table class="table table-sm mb-0">
+              <tbody style="font-size:.8rem;">
+                <tr><td><code>MIN_SCORE</code></td><td>6.0</td><td class="neu">推播/虛擬開倉最低分。調高→只有更強訊號才會推播</td></tr>
+                <tr><td><code>EU_US_SESSION_START</code></td><td>15</td><td class="neu">歐美盤加分開始（台灣時間）</td></tr>
+                <tr><td><code>EU_US_SESSION_END</code></td><td>22</td><td class="neu">歐美盤加分結束</td></tr>
               </tbody>
             </table>
           </div>
-          <div class="row g-2 text-center">
-            <div class="col-4">
-              <div class="step-block">
-                <div class="neu small">最低分（剛好達標）</div>
-                <div class="fw-bold neu fs-5">3.5</div>
-              </div>
+        </div>
+
+        <div class="col-12 col-md-6">
+          <div class="step-block" style="border-color:rgba(248,81,73,.35);">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <code style="color:#f0883e;">ema_scanner/paper_trader.py</code>
+              <span class="neu small">— 資金管理</span>
             </div>
-            <div class="col-4">
-              <div class="step-block" style="border-color:var(--warn);">
-                <div class="neu small">推播門檻</div>
-                <div class="fw-bold warn fs-5">≥ 6.0</div>
-              </div>
+            <table class="table table-sm mb-0">
+              <tbody style="font-size:.8rem;">
+                <tr><td><code>RISK_PCT</code></td><td>0.02</td><td class="neu">每筆風險 2%。調整範圍建議 0.01–0.03</td></tr>
+                <tr><td><code>initial_balance</code></td><td>10000</td><td class="neu">虛擬帳戶初始資金（USDT）。刪除 paper_account.json 後重啟生效</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="col-12">
+          <div class="step-block" style="border-color:rgba(139,148,158,.25);">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <code style="color:#f0883e;">ema_scanner/main.py</code>
+              <span class="neu small">— 掃描排程</span>
             </div>
-            <div class="col-4">
-              <div class="step-block" style="border-color:var(--pos);">
-                <div class="neu small">滿分（最佳條件）</div>
-                <div class="fw-bold pos fs-5">10.0</div>
-              </div>
-            </div>
+            <table class="table table-sm mb-0">
+              <tbody style="font-size:.8rem;">
+                <tr><td><code>SCAN_INTERVAL</code></td><td>60 * 60</td><td class="neu">定時掃描間隔（秒）。60*60 = 每小時一次</td></tr>
+                <tr><td><code>DEDUP_WINDOW</code></td><td>4 * 60 * 60</td><td class="neu">同一幣種去重窗口（秒）。4*60*60 = 4 小時</td></tr>
+                <tr><td><code>KLINES_4H_LIMIT</code></td><td>250</td><td class="neu">每次掃描取的 4H K棒數量。EMA200 至少需要 200 根</td></tr>
+                <tr><td><code>KLINES_1H_LIMIT</code></td><td>100</td><td class="neu">每次掃描取的 1H K棒數量</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
 
-      <!-- Schedule -->
-      <div class="col-12">
-        <div class="card-s">
-          <div class="fw-semibold mb-3 text-white"><i class="fas fa-clock me-2" style="color:var(--accent)"></i>掃描排程與去重機制</div>
-          <div class="row g-3 text-center">
-            <div class="col-12 col-md-4">
-              <div class="step-block">
-                <div class="fw-bold fs-4" style="color:var(--accent);">60 min</div>
-                <div class="neu small mt-1">定時掃描間隔</div>
-              </div>
-            </div>
-            <div class="col-12 col-md-4">
-              <div class="step-block">
-                <div class="fw-bold" style="color:var(--accent); font-size:1.1rem;">00/04/08/12/16/20</div>
-                <div class="neu small mt-1">UTC 4H K線收盤時額外觸發</div>
-              </div>
-            </div>
-            <div class="col-12 col-md-4">
-              <div class="step-block">
-                <div class="fw-bold fs-4" style="color:var(--accent);">4 hrs</div>
-                <div class="neu small mt-1">同一幣種去重窗口</div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div class="p-3 rounded" style="background:rgba(88,166,255,.06); border:1px solid rgba(88,166,255,.2); font-size:.82rem;">
+        <strong class="text-white"><i class="fas fa-lightbulb me-1" style="color:#d29922;"></i>修改步驟</strong>
+        <ol class="mb-0 mt-2 neu" style="padding-left:1.2rem; line-height:2.0;">
+          <li>用文字編輯器開啟對應的 <code>.py</code> 檔案</li>
+          <li>找到頂部常數區，直接修改數字</li>
+          <li>存檔後<strong class="text-white">重新啟動</strong> <code>main.py</code>（或 <code>web_app.py</code>）才會生效</li>
+          <li>建議先用<strong class="text-white">回測</strong>驗證參數效果，再正式運行</li>
+        </ol>
       </div>
+    </div>
 
-    </div><!-- row -->
   </div><!-- sec-strategy -->
 
 </main><!-- main -->
@@ -643,6 +986,31 @@ function reasonBadge(r) {
   const m = {SL:'sl', TP1:'tp1', TP2:'tp2', END:'end'};
   return `<span class="badge-${m[r]||'end'}">${r}</span>`;
 }
+function stratLabel(s) {
+  const map = {
+    EMA_CONVERGENCE: ['#8957e5','EMA收斂'],
+    EMA_PULLBACK:    ['#58a6ff','EMA回測'],
+    RSI_BOUNCE:      ['#d29922','RSI反彈'],
+    MACD_CROSS:      ['#3fb950','MACD交叉'],
+    BB_BREAKOUT:     ['#f0883e','BB突破'],
+    EMA_CROSS_FAST:  ['#79c0ff','EMA快叉'],
+    SWING_BREAK:     ['#ff7b72','擺幅突破'],
+    OI_LS_SIGNAL:    ['#bc8cff','OI多空比'],
+  };
+  const [color, label] = map[s] || ['#8b949e', s||'—'];
+  return `<span style="background:${color}22;color:${color};padding:2px 8px;border-radius:4px;font-size:.75rem;">${label}</span>`;
+}
+// 格式化：自動判斷小數位（小幣多位、大幣少位）
+function fmtP(v) {
+  if (v === null || v === undefined) return '—';
+  const n = Number(v);
+  const d = n >= 1000 ? 2 : n >= 1 ? 4 : 6;
+  return n.toLocaleString('en-US', {minimumFractionDigits:d, maximumFractionDigits:d});
+}
+function fmtN(v, d=2) {
+  if (v === null || v === undefined) return '—';
+  return Number(v).toLocaleString('en-US', {minimumFractionDigits:d, maximumFractionDigits:d});
+}
 
 // ════════════════════════════════════════════════
 //  Equity Chart
@@ -686,17 +1054,26 @@ async function loadAccount() {
 
   // ── Stat cards ──
   const ret = s.total_return_pct ?? 0;
-  $('s-balance').innerHTML = `<span class="${pc(ret)}">$${fmt(s.current_balance,2)}</span>`;
+  $('s-balance').innerHTML = `<span class="${pc(ret)}">$${fmtN(s.current_balance,2)}</span>`;
   $('s-return').innerHTML  = `<span class="${pc(ret)}">${ret>=0?'+':''}${ret}%</span>`;
+
+  const upnl = s.total_upnl ?? 0;
+  $('s-upnl').innerHTML   = `<span class="${pc(upnl)}">${upnl>=0?'+':''}$${fmtN(Math.abs(upnl),2)}</span>`;
+  $('s-notional').innerHTML = `倉位 $${fmtN(s.total_notional??0,0)}`;
+
+  $('s-open').textContent   = s.open_positions ?? 0;
+  $('s-open-sub').textContent = `虛擬部位`;
 
   const wr = s.win_rate_pct ?? 0;
   $('s-winrate').innerHTML = `<span class="${wr>=50?'pos':'neg'}">${wr}%</span>`;
-  $('s-wl').textContent = `${s.wins??0} 勝 / ${s.losses??0} 敗 (共 ${s.full_closes??0} 筆)`;
+  $('s-wl').textContent = `${s.wins??0}勝 / ${s.losses??0}敗`;
 
   const pf = pfDisp(s.profit_factor);
   $('s-pf').innerHTML = `<span class="${(s.profit_factor??0)>=1?'pos':'neg'}">${pf}</span>`;
-  $('s-dd').textContent = `最大回撤 ${s.max_drawdown_pct??0}%`;
-  $('s-open').textContent = s.open_positions ?? 0;
+  $('s-dd').textContent = `盈虧比`;
+
+  $('s-mdd').innerHTML = `<span class="neg">${s.max_drawdown_pct??0}%</span>`;
+  $('s-trades').textContent = `共 ${s.full_closes??0} 筆完整平倉`;
 
   // Badge on nav
   const nbp = $('nav-badge-pos');
@@ -712,18 +1089,25 @@ async function loadAccount() {
   if (!d.positions.length) {
     ovPos.innerHTML = '<span class="neu small">目前無持倉</span>';
   } else {
-    ovPos.innerHTML = d.positions.map(p => `
+    ovPos.innerHTML = d.positions.map(p => {
+      const upnlHtml = p.upnl !== null
+        ? `<span class="${p.upnl >= 0 ? 'pos' : 'neg'}" style="font-size:.78rem;">${p.upnl >= 0 ? '+' : ''}$${fmtN(p.upnl,2)}</span>`
+        : '';
+      return `
       <div class="d-flex align-items-center justify-content-between py-1" style="border-bottom:1px solid var(--border2);">
         <div>
           <strong>${p.symbol.replace('-USDT','')}</strong>
           <span class="ms-2">${dirBadge(p.direction)}</span>
+          <span class="ms-1">${stratLabel(p.strategy)}</span>
           ${p.tp1_hit ? '<span class="badge-tp1 ms-1">TP1✓</span>' : ''}
         </div>
         <div class="text-end">
-          <div class="small">進 ${fmt(p.entry)}</div>
-          <div class="neu" style="font-size:.72rem;">SL ${fmt(p.stop_loss)}</div>
+          <div class="small">進 ${fmtP(p.entry)}</div>
+          <div>${upnlHtml}</div>
+          <div class="neu" style="font-size:.72rem;">${p.duration}</div>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
 
   // ── Overview: recent 5 trades ──
@@ -741,23 +1125,84 @@ async function loadAccount() {
       </tr>`).join('');
   }
 
-  // ── Positions full table ──
-  const pb = $('pos-body');
+  // ── Positions cards ──
+  const pc2 = $('pos-cards');
   if (!d.positions.length) {
-    pb.innerHTML = '<tr><td colspan="9" class="text-center neu py-4">目前無持倉</td></tr>';
+    pc2.innerHTML = '<div class="card-s neu text-center py-5"><i class="fas fa-inbox fa-2x mb-3" style="opacity:.3"></i><br>目前無持倉</div>';
   } else {
-    pb.innerHTML = d.positions.map(p => `
-      <tr>
-        <td><strong>${p.symbol}</strong></td>
-        <td>${dirBadge(p.direction)}</td>
-        <td>${fmt(p.entry)}</td>
-        <td class="neg">${fmt(p.stop_loss)}</td>
-        <td class="pos">${fmt(p.target1)}</td>
-        <td class="pos">${fmt(p.target2)}</td>
-        <td><span style="background:rgba(88,166,255,.15);color:#58a6ff;padding:2px 8px;border-radius:4px;">${p.score}</span></td>
-        <td>${p.tp1_hit ? '<span class="badge-tp2">TP1 已達 ✓</span>' : '<span style="color:var(--muted);font-size:.78rem;">進行中</span>'}</td>
-        <td class="neu" style="font-size:.78rem;">${p.open_time}</td>
-      </tr>`).join('');
+    pc2.innerHTML = d.positions.map(p => {
+      const upnlHtml = p.upnl !== null
+        ? `<span class="${p.upnl >= 0 ? 'pos' : 'neg'} fw-bold">${p.upnl >= 0 ? '+' : ''}$${fmtN(p.upnl, 2)}
+           <small class="ms-1">(${p.upnl_pct >= 0 ? '+' : ''}${fmtN(p.upnl_pct, 2)}%)</small></span>`
+        : '<span class="neu">—</span>';
+
+      const curHtml = p.cur_price !== null
+        ? `<span class="${p.direction === 'LONG' ? (p.cur_price >= p.entry ? 'pos' : 'neg') : (p.cur_price <= p.entry ? 'pos' : 'neg')}">${fmtP(p.cur_price)}</span>`
+        : '<span class="neu">—</span>';
+
+      // 進度條：SL=-1R entry=0 TP1=+1.5R TP2=+2.5R
+      const r = p.progress_r ?? 0;
+      const barPct = Math.min(Math.max((r + 1) / 3.5 * 100, 0), 100);
+      const barCol = r < 0 ? 'var(--neg)' : r > 1.5 ? 'var(--pos)' : '#58a6ff';
+
+      const stratBadge = stratLabel(p.strategy);
+      const statusHtml = p.tp1_hit
+        ? '<span class="badge-tp2">TP1 達成 ✓</span>'
+        : '<span style="color:var(--muted);font-size:.78rem;">持倉中</span>';
+
+      return `
+      <div class="card-s mb-3">
+        <!-- 頂列 -->
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+          <strong style="font-size:1rem;">${p.symbol.replace('-USDT','')}<span class="text-muted" style="font-size:.75rem;">-USDT</span></strong>
+          ${dirBadge(p.direction)}
+          ${stratBadge}
+          ${statusHtml}
+          <span class="ms-auto neu" style="font-size:.78rem;"><i class="fas fa-clock me-1"></i>${p.duration}</span>
+        </div>
+
+        <!-- 核心數據列 -->
+        <div class="row g-3 mb-3">
+          <div class="col-6 col-md-3">
+            <div class="stat-label">進場價</div>
+            <div class="fw-bold">${fmtP(p.entry)}</div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="stat-label">現價</div>
+            <div class="fw-bold">${curHtml}</div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="stat-label">未實現損益</div>
+            <div class="fw-bold">${upnlHtml}</div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="stat-label">風險金額</div>
+            <div class="fw-bold neu">$${fmtN(p.risk_amt, 2)}</div>
+          </div>
+        </div>
+
+        <!-- 進度條：SL ←→ Entry ←→ TP1 ←→ TP2 -->
+        <div class="mb-2" style="font-size:.72rem; color:var(--muted); display:flex; justify-content:space-between;">
+          <span class="neg">SL ${fmtP(p.stop_loss)}</span>
+          <span>進場 ${fmtP(p.entry)}</span>
+          <span class="warn">TP1 ${fmtP(p.target1)}</span>
+          <span class="pos">TP2 ${fmtP(p.target2)}</span>
+        </div>
+        <div style="height:6px; background:var(--border); border-radius:3px; overflow:hidden; margin-bottom:12px;">
+          <div style="height:100%; width:${barPct}%; background:${barCol}; border-radius:3px; transition:width .4s;"></div>
+        </div>
+
+        <!-- 底部資訊列 -->
+        <div class="d-flex flex-wrap gap-3" style="font-size:.78rem; color:var(--muted);">
+          <span><i class="fas fa-boxes-stacked me-1"></i>倉位 <strong style="color:var(--text);">$${fmtN(p.notional,0)}</strong></span>
+          <span><i class="fas fa-coins me-1"></i>合約 ${p.contracts}</span>
+          <span><i class="fas fa-shield-halved me-1"></i>風險 $${fmtN(p.risk_amt,2)}</span>
+          <span><i class="fas fa-star me-1" style="color:#58a6ff;"></i>分數 ${p.score}</span>
+          ${p.strategy === 'OI_LS_SIGNAL' && p.oi_info ? `<span style="color:#bc8cff;"><i class="fas fa-chart-area me-1"></i>OI+${p.oi_info.oi_pct}% 多頭${p.oi_info.long_pct}%</span>` : ''}
+          <span><i class="fas fa-calendar me-1"></i>${p.open_time}</span>
+        </div>
+      </div>`;
+    }).join('');
   }
 
   // ── History ──
@@ -797,13 +1242,13 @@ async function loadSignals() {
   sb.innerHTML = arr.map(s => `
     <tr>
       <td class="neu" style="font-size:.78rem;">${s.time}</td>
-      <td><strong>${s.symbol}</strong></td>
+      <td><strong>${s.symbol.replace('-USDT','')}</strong></td>
+      <td>${stratLabel(s.strategy||'EMA_CONVERGENCE')}</td>
       <td>${dirBadge(s.direction)}</td>
       <td><span style="background:rgba(88,166,255,.15);color:#58a6ff;padding:2px 8px;border-radius:4px;font-size:.78rem;">${s.score}</span></td>
-      <td>${fmt(s.entry)}</td>
-      <td class="neg">${fmt(s.stop_loss)}</td>
-      <td class="pos">${fmt(s.target1)}</td>
-      <td class="neu">${Number(s.bandwidth).toFixed(2)}%</td>
+      <td>${fmtP(s.entry)}</td>
+      <td class="neg">${fmtP(s.stop_loss)}</td>
+      <td class="pos">${fmtP(s.target1)}</td>
     </tr>`).join('');
 }
 

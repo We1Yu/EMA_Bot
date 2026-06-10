@@ -23,7 +23,7 @@ SIGNALS_LOG     = Path(__file__).parent / "signals_log.json"
 SCAN_INTERVAL   = 60 * 60          # 60 分鐘（秒）
 DEDUP_WINDOW    = 4 * 60 * 60      # 4 小時去重窗口（秒）
 KLINES_4H_LIMIT = 250   # EMA200 需要足夠歷史資料（至少 200 根）
-KLINES_1H_LIMIT = 50
+KLINES_1H_LIMIT = 100   # EMA60 需要 60 根，RSI/MACD 需要 35+ 根
 TW_TZ           = timezone(timedelta(hours=8))
 
 
@@ -62,6 +62,7 @@ def log_signal(result: dict, score: float) -> None:
         existing.append({
             "symbol":    result["symbol"],
             "direction": result["direction"],
+            "strategy":  result.get("strategy", "EMA_CONVERGENCE"),
             "score":     score,
             "entry":     result["levels"]["entry"],
             "stop_loss": result["levels"]["stop_loss"],
@@ -93,6 +94,50 @@ def next_4h_close_utc() -> datetime:
     if candidate <= now:
         candidate += timedelta(hours=4)
     return candidate
+
+
+def _print_open_detail(result: dict, score: float) -> None:
+    """在 terminal 印出完整開倉邏輯"""
+    strat_map = {
+        "EMA_CONVERGENCE": "EMA收斂突破",
+        "EMA_PULLBACK":    "EMA30回測",
+        "RSI_BOUNCE":      "RSI反彈",
+        "MACD_CROSS":      "MACD交叉",
+        "BB_BREAKOUT":     "BB突破",
+        "EMA_CROSS_FAST":  "EMA快叉",
+        "SWING_BREAK":     "擺幅突破",
+        "OI_LS_SIGNAL":    "OI多空比",
+    }
+    strategy   = result.get("strategy", "?")
+    strat_name = strat_map.get(strategy, strategy)
+    lvl        = result["levels"]
+    conf       = result["confirm_1h"]
+    conv       = result["convergence"]
+    vol        = result["vol_ratio"]
+    direction  = result["direction"]
+
+    print(f"\n  ┌─ [開倉] {result['symbol']:22s} {direction:5s}  score={score}  策略={strat_name}")
+    print(f"  │  進場={lvl['entry']:.6g}  SL={lvl['stop_loss']:.6g}  TP1={lvl['target1']:.6g}  TP2={lvl['target2']:.6g}")
+
+    if strategy == "EMA_CONVERGENCE":
+        print(f"  │  帶寬={conv['bandwidth']:.2f}% 壓縮{conv['compression_bars']}根  量比={vol:.1f}×  實體={conf['body_ratio']*100:.0f}%")
+    elif strategy == "EMA_PULLBACK":
+        print(f"  │  回測EMA30後反彈確認  量比={vol:.1f}×  實體={conf['body_ratio']*100:.0f}%")
+    elif strategy == "RSI_BOUNCE":
+        print(f"  │  RSI={conf.get('rsi','?')} 從極值反轉  量比={vol:.1f}×  實體={conf['body_ratio']*100:.0f}%")
+    elif strategy == "MACD_CROSS":
+        cross = "負→正" if direction == "LONG" else "正→負"
+        print(f"  │  MACD柱狀圖 {cross} 交叉  量比={vol:.1f}×  實體={conf['body_ratio']*100:.0f}%")
+    elif strategy == "BB_BREAKOUT":
+        print(f"  │  BB帶寬={conv['bandwidth']:.2f}%收縮後突破  量比={vol:.1f}×  實體={conf['body_ratio']*100:.0f}%")
+    elif strategy == "EMA_CROSS_FAST":
+        cross = "EMA9上穿EMA21" if direction == "LONG" else "EMA9下穿EMA21"
+        print(f"  │  {cross}  量比={vol:.1f}×  實體={conf['body_ratio']*100:.0f}%")
+    elif strategy == "SWING_BREAK":
+        print(f"  │  突破8根擺幅高低點  量比={vol:.1f}×  實體={conf['body_ratio']*100:.0f}%")
+    elif strategy == "OI_LS_SIGNAL":
+        print(f"  │  OI+{conf.get('oi_change_pct','?')}%  多頭佔比={conf.get('long_pct','?')}%  量比={vol:.1f}×  實體={conf['body_ratio']*100:.0f}%")
+    print(f"  └{'─'*60}")
 
 
 # ── 核心掃描函式 ──────────────────────────────────────────
@@ -143,7 +188,8 @@ def run_scan() -> None:
             print(f"  [跳過重複] {symbol}  score={score}")
             continue
 
-        print(f"  [訊號] {symbol}  {result['direction']}  score={score}")
+        strat = result.get("strategy", "EMA_CONVERGENCE")
+        print(f"  [訊號] {symbol}  {result['direction']}  [{strat}]  score={score}")
         qualified.append((result, score))
         mark_alerted(state, symbol)
         log_signal(result, score)
@@ -171,9 +217,7 @@ def run_scan() -> None:
     qualified.sort(key=lambda x: x[1], reverse=True)
     for result, score in qualified:
         if trader.open_position(result, score):
-            lvl = result["levels"]
-            print(f"  [紙倉開倉] {result['symbol']:20s}  {result['direction']}  "
-                  f"@{lvl['entry']:.6g}  SL={lvl['stop_loss']:.6g}  score={score}")
+            _print_open_detail(result, score)
 
     trader.save()
     trader.print_report()

@@ -1,6 +1,6 @@
 """
 評分系統模組
-依據掃描結果計算 0–10 分
+依策略類型計算 0–10 分
 """
 
 from datetime import datetime, timezone, timedelta
@@ -8,13 +8,11 @@ from datetime import datetime, timezone, timedelta
 TW_TZ = timezone(timedelta(hours=8))
 MIN_SCORE = 6.0
 
-# 台灣時間歐美盤時間範圍（15:00–22:00）
 EU_US_SESSION_START = 15
 EU_US_SESSION_END   = 22
 
 
 def _session_bonus() -> float:
-    """判斷當前是否為歐美盤時段（台灣時間）"""
     now_tw = datetime.now(TW_TZ)
     if EU_US_SESSION_START <= now_tw.hour < EU_US_SESSION_END:
         return 1.0
@@ -22,52 +20,104 @@ def _session_bonus() -> float:
 
 
 def score_setup(result: dict) -> float:
-    """
-    計算單一交易對的綜合得分
-    result 來自 scanner.scan_symbol 的回傳值
-    """
+    strategy = result.get("strategy", "EMA_CONVERGENCE")
+    if strategy == "EMA_CONVERGENCE":
+        return _score_convergence(result)
+    if strategy == "OI_LS_SIGNAL":
+        return _score_oi_ls(result)
+    return _score_momentum(result)
+
+
+def _score_convergence(result: dict) -> float:
+    """EMA 收斂突破策略評分（原始邏輯）"""
     score = 0.0
     bw   = result["convergence"]["bandwidth"]
     bars = result["convergence"]["compression_bars"]
     vol  = result["vol_ratio"]
     body = result["confirm_1h"]["body_ratio"]
 
-    # 帶寬壓縮程度（0–2 分）
-    if bw < 1.0:
-        score += 2.0
-    elif bw < 1.5:
-        score += 1.0
-    elif bw < 2.0:
-        score += 0.5
+    if bw < 1.0:    score += 2.0
+    elif bw < 1.5:  score += 1.0
+    elif bw < 2.0:  score += 0.5
 
-    # 壓縮持續時間（0–2 分）
-    if bars >= 5:
-        score += 2.0
-    elif bars >= 3:
-        score += 1.0
+    if bars >= 5:   score += 2.0
+    elif bars >= 3: score += 1.0
 
-    # 突破量能（0–2 分）
-    if vol >= 2.0:
-        score += 2.0
-    elif vol >= 1.5:
-        score += 1.0
+    if vol >= 2.0:  score += 2.0
+    elif vol >= 1.5: score += 1.0
 
-    # 1H 蠟燭實體比例（0–1 分）
-    if body >= 0.70:
-        score += 1.0
-    elif body >= 0.60:
-        score += 0.5
+    if body >= 0.70:  score += 1.0
+    elif body >= 0.60: score += 0.5
 
-    # EMA200 方向明確（0–1 分）
+    if result.get("ema200_clear"):
+        score += 1.0
+    score += 1.0          # 1H EMA 穿越已確認
+    score += _session_bonus()
+
+    return round(min(score, 10.0), 1)
+
+
+def _score_momentum(result: dict) -> float:
+    """EMA_PULLBACK / RSI_BOUNCE / MACD_CROSS 通用評分"""
+    score = 3.0   # 有效形態基礎分
+    vol  = result["vol_ratio"]
+    body = result["confirm_1h"]["body_ratio"]
+
+    if vol >= 2.0:    score += 2.0
+    elif vol >= 1.5:  score += 1.5
+    elif vol >= 1.2:  score += 0.5
+
+    if body >= 0.75:   score += 2.0
+    elif body >= 0.65: score += 1.5
+    elif body >= 0.55: score += 0.5
+
     if result.get("ema200_clear"):
         score += 1.0
 
-    # 1H EMA 穿越確認（0–1 分）— 能走到這裡代表已確認
-    score += 1.0
+    # RSI 越極端加分
+    if result.get("strategy") == "RSI_BOUNCE":
+        rsi = result["confirm_1h"].get("rsi")
+        if rsi is not None:
+            if result["direction"] == "LONG"  and rsi < 25:
+                score += 1.0
+            elif result["direction"] == "SHORT" and rsi > 75:
+                score += 1.0
 
-    # 歐美盤時段加分（0–1 分）
     score += _session_bonus()
+    return round(min(score, 10.0), 1)
 
+
+def _score_oi_ls(result: dict) -> float:
+    """OI + 多空比策略專用評分（純數據流派）"""
+    score = 3.0   # 基礎分
+    vol   = result["vol_ratio"]
+    body  = result["confirm_1h"]["body_ratio"]
+    info  = result["confirm_1h"]
+
+    # OI 升幅越大越強
+    oi_pct = info.get("oi_change_pct", 0)
+    if oi_pct >= 8.0:   score += 2.5
+    elif oi_pct >= 5.0: score += 2.0
+    elif oi_pct >= 3.0: score += 1.0
+    else:               score += 0.5
+
+    # 多頭佔比越偏越強
+    long_pct = info.get("long_pct", 50)
+    deviation = abs(long_pct - 50)   # 偏離中性(50%)的程度
+    if deviation >= 10:   score += 2.0
+    elif deviation >= 6:  score += 1.0
+    elif deviation >= 3:  score += 0.5
+
+    # 量能
+    if vol >= 2.0:    score += 1.5
+    elif vol >= 1.5:  score += 1.0
+    elif vol >= 1.2:  score += 0.5
+
+    # 實體比例
+    if body >= 0.65:  score += 1.0
+    elif body >= 0.50: score += 0.5
+
+    score += _session_bonus()
     return round(min(score, 10.0), 1)
 
 

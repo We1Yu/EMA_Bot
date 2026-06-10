@@ -28,6 +28,7 @@ class Position:
     score:         float
     tp1_hit:       bool = False
     last_bar_ms:   int  = 0    # 最後已處理的 K 棒時間（防止同一棒重複觸發）
+    strategy:      str  = ""   # 觸發策略名稱
 
 
 class PaperTrader:
@@ -63,6 +64,7 @@ class PaperTrader:
             notional     = contracts * entry,
             open_time_ms = result.get("candle_time_ms", int(time.time() * 1000)),
             score        = score,
+            strategy     = result.get("strategy", ""),
         )
         self.positions[symbol] = pos
         return True
@@ -209,13 +211,14 @@ class PaperTrader:
         print(f"{'='*55}")
         print(f"  初始資金：  ${s['initial_balance']:>12,.2f}")
         print(f"  當前餘額：  ${s['current_balance']:>12,.2f}")
-        print(f"  總損益：    ${s['total_pnl']:>+12,.2f}  ({s['total_return_pct']:+.2f}%)")
-        print(f"  最大回撤：  {s['max_drawdown_pct']:.2f}%")
+        print(f"  總損益：    ${s.get('total_pnl', 0.0):>+12,.2f}  ({s.get('total_return_pct', 0.0):+.2f}%)")
+        print(f"  最大回撤：  {s.get('max_drawdown_pct', 0.0):.2f}%")
         print(f"  完整平倉：  {s.get('full_closes', 0)} 筆")
         print(f"  勝率：      {s.get('win_rate_pct', 0):.1f}%")
         print(f"  平均獲利：  ${s.get('avg_win', 0):>+12,.2f}")
         print(f"  平均虧損：  ${s.get('avg_loss', 0):>+12,.2f}")
-        print(f"  獲利因子：  {s.get('profit_factor', 0):.2f}")
+        pf = s.get('profit_factor')
+        print(f"  獲利因子：  {f'{pf:.2f}' if pf is not None else 'N/A'}")
         print(f"  持倉中：    {s['open_positions']} 筆")
         if self.positions:
             for sym, pos in self.positions.items():
@@ -245,7 +248,7 @@ class PaperTrader:
         trader = cls(data["initial_balance"], data.get("risk_pct", RISK_PCT))
         trader.balance       = data["balance"]
         trader.positions     = {
-            k: Position(**{**{"tp1_hit": False, "last_bar_ms": 0}, **v})
+            k: Position(**{**{"tp1_hit": False, "last_bar_ms": 0, "strategy": ""}, **v})
             for k, v in data.get("positions", {}).items()
         }
         trader.trade_history = data.get("trade_history", [])
