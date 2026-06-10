@@ -1,0 +1,135 @@
+"""
+BingX async data source for crypto_screener.
+Mirrors the Binance fetch interface so scanner.py can swap between them.
+"""
+
+import logging
+from typing import Optional
+
+import aiohttp
+
+log = logging.getLogger(__name__)
+
+BINGX_BASE = "https://open-api.bingx.com"
+
+STABLECOIN_KEYWORDS = {
+    "USDC", "BUSD", "TUSD", "FDUSD", "DAI", "USDD",
+    "FRAX", "USDP", "GUSD", "SUSD",
+}
+
+
+async def _get(session: aiohttp.ClientSession, url: str, params: dict) -> Optional[dict]:
+    try:
+        async with session.get(
+            url, params=params, timeout=aiohttp.ClientTimeout(total=10)
+        ) as resp:
+            data = await resp.json(content_type=None)
+            if isinstance(data, dict) and data.get("code") == 0:
+                return data
+            if isinstance(data, dict) and data.get("code") == 109415:
+                return None   # contract suspended — silent skip
+            log.debug("BingX non-zero code: %s", data)
+            return None
+    except Exception as e:
+        log.debug("BingX fetch error %s: %s", url, e)
+        return None
+
+
+# ── Public interface (same signatures as scanner.py Binance helpers) ──
+
+async def fetch_symbols(session: aiohttp.ClientSession) -> list[str]:
+    """Return all active USDT perpetual symbols in BTC-USDT format."""
+    data = await _get(session, f"{BINGX_BASE}/openApi/swap/v2/quote/contracts", {})
+    if not data:
+        return []
+    symbols = []
+    for c in data.get("data", []):
+        sym: str = c.get("symbol", "")
+        if not sym.endswith("-USDT"):
+            continue
+        base = sym.replace("-USDT", "").upper()
+        if base in STABLECOIN_KEYWORDS:
+            continue
+        symbols.append(sym)
+    return symbols
+
+
+async def fetch_klines(
+    session: aiohttp.ClientSession, symbol: str, interval: str, limit: int
+) -> Optional[list]:
+    """
+    Fetch klines from BingX.
+    interval: "4h" / "1h" / "1w"  (lowercase, BingX style)
+    Returns list of raw bar dicts: [{open, high, low, close, volume, time}, ...]
+    sorted oldest → newest.
+    """
+    data = await _get(
+        session,
+        f"{BINGX_BASE}/openApi/swap/v3/quote/klines",
+        {"symbol": symbol, "interval": interval.lower(), "limit": limit},
+    )
+    if not data:
+        return None
+    raw = data.get("data", [])
+    if not raw:
+        return None
+
+    candles = []
+    for bar in raw:
+        try:
+            candles.append({
+                "open":   float(bar["open"]),
+                "high":   float(bar["high"]),
+                "low":    float(bar["low"]),
+                "close":  float(bar["close"]),
+                "volume": float(bar["volume"]),
+                "time":   int(bar["time"]),
+            })
+        except (KeyError, TypeError, ValueError):
+            continue
+
+    candles.sort(key=lambda x: x["time"])
+    return candles if candles else None
+
+
+async def fetch_funding(session: aiohttp.ClientSession, symbol: str) -> float:
+    """Return latest funding rate as a decimal (e.g. 0.0001)."""
+    data = await _get(
+        session,
+        f"{BINGX_BASE}/openApi/swap/v2/quote/premiumIndex",
+        {"symbol": symbol},
+    )
+    if not data:
+        return 0.0
+    item = data.get("data")
+    if isinstance(item, list) and item:
+        item = item[0]
+    if isinstance(item, dict):
+        for key in ("lastFundingRate", "fundingRate"):
+            try:
+                v = float(item.get(key) or 0)
+                return v
+            except (TypeError, ValueError):
+                pass
+    return 0.0
+
+
+async def fetch_ticker_24h(session: aiohttp.ClientSession, symbol: str) -> float:
+    """Return 24h price change percent (e.g. 3.5 means +3.5%)."""
+    data = await _get(
+        session,
+        f"{BINGX_BASE}/openApi/swap/v2/quote/ticker",
+        {"symbol": symbol},
+    )
+    if not data:
+        return 0.0
+    items = data.get("data", [])
+    if isinstance(items, dict):
+        items = [items]
+    for it in items:
+        for key in ("priceChangePercent", "priceChange24h"):
+            try:
+                return float(it.get(key) or 0)
+            except (TypeError, ValueError):
+                pass
+    return 0.0
