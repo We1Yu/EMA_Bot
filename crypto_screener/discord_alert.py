@@ -121,10 +121,16 @@ def build_daily_report_embed(stats: dict, history_today: list[dict], exchange: s
     if full_today:
         lines = []
         for t in reversed(full_today[-10:]):
-            icon    = "✅" if t.get("tp1_hit", t["pnl"] > 0) else "❌"
-            strat   = t.get("strategy", "—")
-            reason  = t.get("reason", "—")
-            lines.append(f"{icon} {t['symbol']}  `{strat}`  {reason}  ${t['pnl']:+.2f}")
+            reason = t.get("reason", "—")
+            if reason == "SHUTDOWN":
+                icon = "🔴"
+            elif t.get("tp1_hit", t["pnl"] > 0):
+                icon = "✅"
+            else:
+                icon = "❌"
+            strat  = t.get("strategy", "—")
+            suffix = "  ⚠️ 強制平倉" if reason == "SHUTDOWN" else ""
+            lines.append(f"{icon} {t['symbol']}  `{strat}`  {reason}  ${t['pnl']:+.2f}{suffix}")
         fields.append({
             "name":   f"📜 今日交易明細 (最近 {min(len(full_today), 10)} 筆)",
             "value":  "\n".join(lines) or "—",

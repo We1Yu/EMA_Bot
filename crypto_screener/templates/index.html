@@ -297,6 +297,11 @@
       color: var(--red);
     }
 
+    .tag-SHUTDOWN {
+      background: rgba(210, 153, 34, .18);
+      color: var(--yellow);
+    }
+
     .empty {
       color: var(--muted);
       padding: 16px 0;
@@ -713,7 +718,7 @@
           <td>${t.symbol}</td>
           <td><span class="tag tag-${t.direction}">${t.direction}</span></td>
           <td style="color:var(--muted);font-size:0.85em">${t.strategy || "-"}</td>
-          <td>${t.reason}</td>
+          <td>${t.reason === "SHUTDOWN" ? `<span class="tag tag-SHUTDOWN">SHUTDOWN ⚠️</span>` : t.reason}</td>
           <td>${fmt(t.entry, 6)}</td>
           <td>${fmt(t.exit, 6)}</td>
           <td class="${pnlClass(t.pnl)}">$${fmt(t.pnl, 2)}</td>
