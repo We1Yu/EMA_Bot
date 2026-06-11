@@ -115,6 +115,8 @@ class PaperTrader:
     # ── 平倉輔助 ─────────────────────────────────────────────
     def _close(self, symbol: str, exit_price: float, reason: str, time_ms: int) -> dict:
         pos       = self.positions.pop(symbol)
+        if reason == "SL" and pos.tp1_hit:
+            reason = "套保"
         remaining = 0.5 if pos.tp1_hit else 1.0
         if pos.direction == "LONG":
             pnl = (exit_price - pos.entry_price) * pos.contracts * remaining

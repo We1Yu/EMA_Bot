@@ -302,6 +302,11 @@
       color: var(--yellow);
     }
 
+    .tag-套保 {
+      background: rgba(88, 166, 255, .15);
+      color: var(--blue);
+    }
+
     .empty {
       color: var(--muted);
       padding: 16px 0;
@@ -718,7 +723,7 @@
           <td>${t.symbol}</td>
           <td><span class="tag tag-${t.direction}">${t.direction}</span></td>
           <td style="color:var(--muted);font-size:0.85em">${t.strategy || "-"}</td>
-          <td>${t.reason === "SHUTDOWN" ? `<span class="tag tag-SHUTDOWN">SHUTDOWN ⚠️</span>` : t.reason}</td>
+          <td>${t.reason === "SHUTDOWN" ? `<span class="tag tag-SHUTDOWN">SHUTDOWN ⚠️</span>` : t.reason === "套保" ? `<span class="tag tag-套保">套保</span>` : t.reason}</td>
           <td>${fmt(t.entry, 6)}</td>
           <td>${fmt(t.exit, 6)}</td>
           <td class="${pnlClass(t.pnl)}">$${fmt(t.pnl, 2)}</td>
@@ -739,7 +744,7 @@
         <tr>
           <td>${t.symbol}</td>
           <td><span class="tag tag-${t.direction}">${t.direction}</span></td>
-          <td>${t.reason}</td>
+          <td>${t.reason === "套保" ? `<span class="tag tag-套保">套保</span>` : t.reason}</td>
           <td>${fmt(t.entry, 6)}</td>
           <td>${fmt(t.exit, 6)}</td>
           <td class="${pnlClass(t.pnl)}">$${fmt(t.pnl, 2)}</td>
@@ -792,13 +797,15 @@
           </div>
           <div class="row"><span class="label">策略</span><span>${p.strategy || "MA_BREAKOUT"}</span></div>
           <div class="row"><span class="label">分數</span><span>${p.score}</span></div>
-          <div class="row"><span class="label">進場 / 現價</span><span>${fmt(p.entry, 6)} / ${fmt(p.cur_price, 6)}</span></div>
-          <div class="row"><span class="label">停損</span><span>${fmt(p.stop_loss, 6)}</span></div>
+          <div class="row"><span class="label">進場價</span><span>${fmt(p.entry, 6)}</span></div>
+          <div class="row"><span class="label">現價</span><span>${p.cur_price === null ? "-" : fmt(p.cur_price, 6)}</span></div>
+          <div class="row"><span class="label">SL</span><span>${fmt(p.stop_loss, 6)}</span></div>
           <div class="row"><span class="label">TP1</span><span class="${p.tp1_hit ? 'hit' : ''}">${fmt(p.target_1, 6)}${p.tp1_hit ? " ✓" : ""}</span></div>
           <div class="row"><span class="label">TP2</span><span class="${p.tp2_hit ? 'hit' : ''}">${fmt(p.target_2, 6)}${p.tp2_hit ? " ✓" : ""}</span></div>
           <div class="row"><span class="label">TP3</span><span>${fmt(p.target_3, 6)}</span></div>
           <div class="row"><span class="label">名目金額</span><span>$${fmt(p.notional, 2)}</span></div>
-          <div class="row"><span class="label">持倉時間</span><span>${p.duration}</span></div>
+          <div class="row"><span class="label">開倉時間</span><span>${p.open_time}</span></div>
+          <div class="row"><span class="label">持倉</span><span>${p.duration}</span></div>
           ${p.entry_logic ? `<div class="row entry-logic-row"><span class="label">進場邏輯</span><span class="entry-logic">${p.entry_logic}</span></div>` : ""}
         </div>`).join("");
         }
@@ -875,12 +882,14 @@
           </div>
           <div class="row"><span class="label">策略</span><span>${p.strategy}</span></div>
           <div class="row"><span class="label">分數</span><span>${p.score}</span></div>
-          <div class="row"><span class="label">進場 / 現價</span><span>${fmt(p.entry, 6)} / ${fmt(p.cur_price, 6)}</span></div>
-          <div class="row"><span class="label">停損</span><span>${fmt(p.stop_loss, 6)}</span></div>
+          <div class="row"><span class="label">進場價</span><span>${fmt(p.entry, 6)}</span></div>
+          <div class="row"><span class="label">現價</span><span>${p.cur_price === null ? "-" : fmt(p.cur_price, 6)}</span></div>
+          <div class="row"><span class="label">SL</span><span>${fmt(p.stop_loss, 6)}</span></div>
           <div class="row"><span class="label">TP1</span><span class="${p.tp1_hit ? 'hit' : ''}">${fmt(p.target_1, 6)}${p.tp1_hit ? " ✓" : ""}</span></div>
           <div class="row"><span class="label">TP2</span><span>${fmt(p.target_2, 6)}</span></div>
           <div class="row"><span class="label">名目金額</span><span>$${fmt(p.notional, 2)}</span></div>
-          <div class="row"><span class="label">持倉時間</span><span>${p.duration}</span></div>
+          <div class="row"><span class="label">開倉時間</span><span>${p.open_time}</span></div>
+          <div class="row"><span class="label">持倉</span><span>${p.duration}</span></div>
         </div>`).join("");
         }
 

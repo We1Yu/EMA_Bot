@@ -150,6 +150,8 @@ class PaperAccount:
 
     def _close(self, symbol: str, price: float, reason: str) -> dict:
         pos  = self.positions.pop(symbol)
+        if reason == "SL" and pos.tp1_hit:
+            reason = "套保"
         frac = 0.3 if (pos.tp1_hit and pos.tp2_hit) else (0.7 if pos.tp1_hit else 1.0)
         if pos.direction == "LONG":
             pnl = (price - pos.entry_price) * pos.contracts * frac
