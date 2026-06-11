@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>虛擬交易機器人</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --panel2: #1c2128; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e;
+    --green: #3fb950; --red: #f85149; --blue: #58a6ff; --yellow: #d29922; --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif;
+    background: var(--bg); color: var(--text); padding: 20px;
+    max-width: 1400px; margin: 0 auto;
+  }
+  h1 {
+    font-size: 1.5em; margin: 0 0 4px; display: flex; align-items: center; gap: 10px;
+  }
+  .sub { color: var(--muted); font-size: 0.85em; margin-bottom: 18px; }
+
+  /* Top tab bar */
+  .tabs {
+    display: flex; gap: 6px; margin-bottom: 20px; border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; background: var(--bg); z-index: 10; padding-top: 4px;
+  }
+  .tab-btn {
+    background: none; border: none; color: var(--muted); padding: 10px 20px;
+    font-size: 1em; font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent;
+    border-radius: 8px 8px 0 0; font-family: inherit; transition: all .15s ease;
+  }
+  .tab-btn.active { color: var(--text); border-bottom-color: var(--blue); background: var(--panel); }
+  .tab-btn:hover { color: var(--text); background: rgba(255,255,255,.03); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; animation: fadein .25s ease; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Stat cards */
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px; margin-bottom: 20px;
+  }
+  .card {
+    background: linear-gradient(180deg, var(--panel2), var(--panel));
+    border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
+    transition: border-color .15s ease;
+  }
+  .card:hover { border-color: #484f58; }
+  .card .label { color: var(--muted); font-size: 0.72em; text-transform: uppercase; letter-spacing: .06em; }
+  .card .value { font-size: 1.5em; font-weight: 700; margin-top: 6px; letter-spacing: -.01em; }
+  .pos { color: var(--green); } .neg { color: var(--red); }
+
+  /* Info / how-to-use box */
+  .info-box {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px; margin-bottom: 20px; font-size: 0.88em; line-height: 1.7;
+  }
+  .info-box summary {
+    cursor: pointer; font-weight: 600; font-size: 1.02em; list-style: none;
+    display: flex; align-items: center; gap: 8px; user-select: none;
+  }
+  .info-box summary::-webkit-details-marker { display: none; }
+  .info-box summary::before { content: "▶"; font-size: 0.7em; color: var(--blue); transition: transform .15s ease; }
+  .info-box[open] summary::before { transform: rotate(90deg); }
+  .info-box .body { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .info-box h4 { margin: 14px 0 6px; font-size: 0.95em; color: var(--blue); }
+  .info-box h4:first-child { margin-top: 0; }
+  .info-box ul { margin: 4px 0; padding-left: 20px; }
+  .info-box li { margin: 3px 0; }
+  .info-box code { background: rgba(110,118,129,.15); padding: 1px 5px; border-radius: 4px; font-size: 0.92em; }
+  .info-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px;
+  }
+
+  /* Sections / tables */
+  section { margin-bottom: 24px; }
+  h2 {
+    font-size: 1.05em; border-bottom: 1px solid var(--border); padding-bottom: 8px;
+    margin-bottom: 4px; display: flex; align-items: center; gap: 8px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 0.8em; text-transform: uppercase; letter-spacing: .03em; }
+  tbody tr { transition: background .1s ease; }
+  tbody tr:hover td { background: rgba(255,255,255,0.03); }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 5px; font-size: 0.8em; font-weight: 600; }
+  .tag-A { background: rgba(63,185,80,.15); color: var(--green); }
+  .tag-B { background: rgba(88,166,255,.15); color: var(--blue); }
+  .tag-LONG { background: rgba(63,185,80,.15); color: var(--green); }
+  .tag-SHORT { background: rgba(248,81,73,.15); color: var(--red); }
+  .empty { color: var(--muted); padding: 16px 0; text-align: center; font-size: 0.9em; }
+  .scroll-x { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); }
+  .scroll-x table { font-size: 0.83em; }
+  .scroll-x th, .scroll-x td { border-bottom: 1px solid var(--border); }
+  .scroll-x tbody tr:last-child td { border-bottom: none; }
+  h2 { border: none; background: none; padding: 0 0 10px 0; }
+
+  /* Position cards (one per trading pair) */
+  .pos-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px;
+  }
+  .pos-card {
+    background: linear-gradient(180deg, var(--panel2), var(--panel));
+    border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
+    transition: border-color .15s ease;
+  }
+  .pos-card:hover { border-color: #484f58; }
+  .pos-card-head {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+  }
+  .pos-card-head .symbol { font-size: 1.05em; font-weight: 700; letter-spacing: -.01em; }
+  .pos-card-head .tags { display: flex; gap: 6px; }
+  .pos-card .upnl-line {
+    text-align: center; font-size: 1.3em; font-weight: 700; padding: 8px 0 12px;
+  }
+  .pos-card .upnl-line .pct { font-size: 0.6em; font-weight: 500; color: var(--muted); display: block; margin-top: 2px; }
+  .pos-card .row {
+    display: flex; justify-content: space-between; font-size: 0.83em;
+    padding: 4px 0; border-bottom: 1px dashed var(--border);
+  }
+  .pos-card .row:last-child { border-bottom: none; }
+  .pos-card .row .label { color: var(--muted); }
+  .pos-card .row .hit { color: var(--green); font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="scalp">🤖 高頻機器人</button>
+    <button class="tab-btn" data-tab="ema">📊 EMA Scanner</button>
+  </div>
+
+  <!-- ───────── 高頻機器人 ───────── -->
+  <div class="tab-content active" id="tab-scalp">
+    <h1>🤖 高頻虛擬交易機器人 <span style="color:var(--muted); font-size:0.6em; font-weight:400;">(BingX 永續合約)</span></h1>
+    <div class="sub" id="meta">載入中...</div>
+
+    <details class="info-box">
+      <summary>📖 策略說明與使用方式</summary>
+      <div class="body">
+        <h4>運作方式</h4>
+        <ul>
+          <li>每 <code>90</code> 秒掃描一次 BingX 全部 USDT 永續合約（約 700 種），抓取 <code>5 分鐘</code> K 線計算指標</li>
+          <li>每 <code>12</code> 秒檢查一次目前持倉的最新價格，判斷是否觸發停損 / 停利</li>
+          <li>同一幣種出場後 <code>15 分鐘</code> 內不會重複進場（避免同訊號重複觸發）</li>
+          <li>虛擬本金 <code>$10,000</code>，每筆交易風險 <code>1%</code> 資金</li>
+        </ul>
+        <h4>進場邏輯：MA 群聚突破 / 跌破</h4>
+        <div class="info-grid">
+          <div>
+            <strong style="color:var(--green)">LONG（突破做多）</strong>
+            <ul>
+              <li>MA15/30/45/60 緊密群聚（價差 &lt; 1.5%）</li>
+              <li>價格放量向上突破所有均線（量能 ≥ 5 根均量 1.5 倍）</li>
+              <li>K 棒實體 ≥ 60%，RSI 介於 45–75，ADX ≥ 20 且多方動能強</li>
+              <li>週線站上 20 週均線（趨勢偏多）</li>
+            </ul>
+          </div>
+          <div>
+            <strong style="color:var(--red)">SHORT（跌破做空）</strong>
+            <ul>
+              <li>MA15/30/45/60 緊密群聚，價格放量向下跌破所有均線</li>
+              <li>K 棒實體 ≥ 60%，RSI 介於 25–55，ADX ≥ 20 且空方動能強</li>
+              <li>週線跌破 20 週均線（趨勢偏空）</li>
+            </ul>
+          </div>
+        </div>
+        <h4>出場規則（依 ATR 計算停損停利）</h4>
+        <ul>
+          <li><strong>停損</strong>：進場價 ± 1.5 倍 ATR</li>
+          <li><strong>TP1</strong>：達標出場 30% 倉位，停損移到進場價（保本）</li>
+          <li><strong>TP2</strong>：達標出場 40% 倉位，停損移到 TP1（鎖利）</li>
+          <li><strong>TP3</strong>：剩餘 30% 全部出場</li>
+        </ul>
+        <h4>欄位說明</h4>
+        <ul>
+          <li><strong>Tier A</strong>：價格在 200 均線同側且趨勢延續（高品質訊號）；<strong>Tier B</strong>：剛穿越 200 均線（轉折訊號）</li>
+          <li><strong>分數</strong>：0–10 分，綜合群聚緊密度、量能、K 棒品質、RSI/ADX、200 均線位置、資金費率、週線趨勢等加總</li>
+          <li><strong>R:R</strong>：風險報酬比（停利距離 ÷ 停損距離），數字越高代表報酬潛力相對風險越大</li>
+        </ul>
+      </div>
+    </details>
+
+    <div class="grid" id="stats-grid"></div>
+
+    <section>
+      <h2>📌 持倉中 (Open Positions)</h2>
+      <div class="pos-grid" id="pos-grid"></div>
+      <div class="empty" id="pos-empty" style="display:none">目前沒有持倉</div>
+    </section>
+
+    <section>
+      <h2>🔍 最新掃描訊號 (Top 20)</h2>
+      <div class="scroll-x"><table id="sig-table">
+        <thead><tr>
+          <th>幣種</th><th>方向</th><th>Tier</th><th>分數</th><th>進場</th><th>停損</th>
+          <th>TP1</th><th>RSI</th><th>ADX</th><th>R:R</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div class="empty" id="sig-empty" style="display:none">尚無掃描結果</div>
+    </section>
+
+    <section>
+      <h2>📜 最近成交紀錄 (Recent Closes)</h2>
+      <div class="scroll-x"><table id="hist-table">
+        <thead><tr>
+          <th>幣種</th><th>方向</th><th>原因</th><th>進場</th><th>出場</th><th>損益</th><th>關閉時間</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div class="empty" id="hist-empty" style="display:none">尚無成交紀錄</div>
+    </section>
+  </div>
+
+  <!-- ───────── EMA Scanner ───────── -->
+  <div class="tab-content" id="tab-ema">
+    <h1>📊 EMA Scanner 虛擬帳戶</h1>
+    <div class="sub" id="ema-meta">載入中...</div>
+
+    <details class="info-box">
+      <summary>📖 策略說明與使用方式</summary>
+      <div class="body">
+        <h4>運作方式</h4>
+        <ul>
+          <li>每 <code>60</code> 分鐘掃描一次合約市場，抓取 <code>4 小時</code> K 線計算指標（中長線波段）</li>
+          <li>找到符合條件的標的後自動建立虛擬倉位，並在每次掃描時用最新 K 棒判斷是否觸發停損 / 停利</li>
+          <li>虛擬本金 <code>$10,000</code>，每筆交易風險 <code>2%</code> 資金</li>
+        </ul>
+        <h4>進場邏輯：EMA Pullback（均線回測）</h4>
+        <ul>
+          <li>判斷 4H 主趨勢方向（多方 / 空方），等待價格回測到關鍵 EMA 後再順勢進場</li>
+          <li><strong style="color:var(--green)">LONG</strong>：上升趨勢中價格回踩 EMA 後再度站回，視為續漲訊號</li>
+          <li><strong style="color:var(--red)">SHORT</strong>：下降趨勢中價格反彈到 EMA 後再度跌破，視為續跌訊號</li>
+          <li>分數 (score) 綜合趨勢強度與訊號品質，分數越高代表訊號品質越好</li>
+        </ul>
+        <h4>出場規則</h4>
+        <ul>
+          <li><strong>停損</strong>：依進場時 ATR / 結構計算的固定停損價</li>
+          <li><strong>TP1</strong>：達標出場 50% 倉位，停損移到進場價（保本）</li>
+          <li><strong>TP2</strong>：剩餘 50% 全部出場</li>
+        </ul>
+        <h4>欄位說明</h4>
+        <ul>
+          <li><strong>策略</strong>：目前固定為 <code>EMA_PULLBACK</code></li>
+          <li><strong>分數</strong>：訊號評分，分數越高代表訊號品質越好</li>
+          <li>此分頁與「高頻機器人」是<strong>各自獨立的虛擬帳戶</strong>，互不影響資金與持倉</li>
+        </ul>
+      </div>
+    </details>
+
+    <div class="grid" id="ema-stats-grid"></div>
+
+    <section>
+      <h2>📌 持倉中 (Open Positions)</h2>
+      <div class="pos-grid" id="ema-pos-grid"></div>
+      <div class="empty" id="ema-pos-empty" style="display:none">目前沒有持倉</div>
+    </section>
+
+    <section>
+      <h2>🔍 最新掃描訊號 (Top 20)</h2>
+      <div class="scroll-x"><table id="ema-sig-table">
+        <thead><tr>
+          <th>幣種</th><th>方向</th><th>策略</th><th>分數</th><th>進場</th><th>停損</th>
+          <th>TP1</th><th>TP2</th><th>時間</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div class="empty" id="ema-sig-empty" style="display:none">尚無掃描結果</div>
+    </section>
+
+    <section>
+      <h2>📜 最近成交紀錄 (Recent Closes)</h2>
+      <div class="scroll-x"><table id="ema-hist-table">
+        <thead><tr>
+          <th>幣種</th><th>方向</th><th>原因</th><th>進場</th><th>出場</th><th>損益</th><th>關閉時間</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div class="empty" id="ema-hist-empty" style="display:none">尚無成交紀錄</div>
+    </section>
+  </div>
+
+<script>
+function fmt(n, d=4) {
+  if (n === null || n === undefined) return "-";
+  return Number(n).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: d});
+}
+function pnlClass(v) { return v > 0 ? "pos" : (v < 0 ? "neg" : ""); }
+
+async function refreshScalp() {
+  try {
+    const res = await fetch("/api/state");
+    const data = await res.json();
+    const s = data.stats;
+
+    document.getElementById("meta").textContent =
+      `K線週期: ${data.interval} | 上次掃描: ${data.last_scan} | 掃描幣種數: ${data.total_scanned}`;
+
+    const cards = [
+      ["帳戶餘額", `$${fmt(s.current_balance, 2)}`, ""],
+      ["總損益", `$${fmt(s.total_pnl, 2)} (${fmt(s.return_pct, 2)}%)`, pnlClass(s.total_pnl)],
+      ["持倉中", s.open_positions, ""],
+      ["已平倉次數", s.full_closes, ""],
+      ["勝率", `${fmt(s.win_rate, 1)}%`, ""],
+      ["獲利因子", s.profit_factor === null ? "N/A" : fmt(s.profit_factor, 2), ""],
+      ["最大回撤", `${fmt(s.max_drawdown_pct, 2)}%`, "neg"],
+    ];
+    document.getElementById("stats-grid").innerHTML = cards.map(([label, value, cls]) =>
+      `<div class="card"><div class="label">${label}</div><div class="value ${cls}">${value}</div></div>`
+    ).join("");
+
+    // Positions
+    const posGrid = document.getElementById("pos-grid");
+    if (data.positions.length === 0) {
+      posGrid.innerHTML = "";
+      document.getElementById("pos-empty").style.display = "block";
+    } else {
+      document.getElementById("pos-empty").style.display = "none";
+      posGrid.innerHTML = data.positions.map(p => `
+        <div class="pos-card">
+          <div class="pos-card-head">
+            <span class="symbol">${p.symbol}</span>
+            <span class="tags">
+              <span class="tag tag-${p.direction}">${p.direction}</span>
+              <span class="tag tag-${p.tier}">${p.tier}</span>
+            </span>
+          </div>
+          <div class="upnl-line ${pnlClass(p.upnl)}">
+            ${p.upnl === null ? "-" : `$${fmt(p.upnl,2)}`}
+            <span class="pct">${p.upnl === null ? "" : `(${fmt(p.upnl_pct,2)}%)`}</span>
+          </div>
+          <div class="row"><span class="label">分數</span><span>${p.score}</span></div>
+          <div class="row"><span class="label">進場 / 現價</span><span>${fmt(p.entry, 6)} / ${fmt(p.cur_price, 6)}</span></div>
+          <div class="row"><span class="label">停損</span><span>${fmt(p.stop_loss, 6)}</span></div>
+          <div class="row"><span class="label">TP1</span><span class="${p.tp1_hit ? 'hit' : ''}">${fmt(p.target_1, 6)}${p.tp1_hit ? " ✓" : ""}</span></div>
+          <div class="row"><span class="label">TP2</span><span class="${p.tp2_hit ? 'hit' : ''}">${fmt(p.target_2, 6)}${p.tp2_hit ? " ✓" : ""}</span></div>
+          <div class="row"><span class="label">TP3</span><span>${fmt(p.target_3, 6)}</span></div>
+          <div class="row"><span class="label">名目金額</span><span>$${fmt(p.notional, 2)}</span></div>
+          <div class="row"><span class="label">持倉時間</span><span>${p.duration}</span></div>
+        </div>`).join("");
+    }
+
+    // Signals
+    const sigBody = document.querySelector("#sig-table tbody");
+    if (data.signals.length === 0) {
+      sigBody.innerHTML = "";
+      document.getElementById("sig-empty").style.display = "block";
+    } else {
+      document.getElementById("sig-empty").style.display = "none";
+      sigBody.innerHTML = data.signals.map(sg => `
+        <tr>
+          <td>${sg.symbol}</td>
+          <td><span class="tag tag-${sg.direction}">${sg.direction}</span></td>
+          <td><span class="tag tag-${sg.tier}">${sg.tier}</span></td>
+          <td>${sg.score}</td>
+          <td>${fmt(sg.entry, 6)}</td>
+          <td>${fmt(sg.stop_loss, 6)}</td>
+          <td>${fmt(sg.target_1, 6)}</td>
+          <td>${fmt(sg.rsi, 1)}</td>
+          <td>${fmt(sg.adx, 1)}</td>
+          <td>${fmt(sg.risk_reward, 2)}</td>
+        </tr>`).join("");
+    }
+
+    // History
+    const histBody = document.querySelector("#hist-table tbody");
+    if (data.history.length === 0) {
+      histBody.innerHTML = "";
+      document.getElementById("hist-empty").style.display = "block";
+    } else {
+      document.getElementById("hist-empty").style.display = "none";
+      histBody.innerHTML = data.history.map(t => `
+        <tr>
+          <td>${t.symbol}</td>
+          <td><span class="tag tag-${t.direction}">${t.direction}</span></td>
+          <td>${t.reason}</td>
+          <td>${fmt(t.entry, 6)}</td>
+          <td>${fmt(t.exit, 6)}</td>
+          <td class="${pnlClass(t.pnl)}">$${fmt(t.pnl, 2)}</td>
+          <td>${t.close_time_str}</td>
+        </tr>`).join("");
+    }
+  } catch (e) {
+    document.getElementById("meta").textContent = "載入失敗，重試中... " + e;
+  }
+}
+
+async function refreshEma() {
+  try {
+    const res = await fetch("/api/ema_state");
+    const data = await res.json();
+    const s = data.stats;
+
+    document.getElementById("ema-meta").textContent =
+      `EMA Pullback 策略 | 帳戶持倉數: ${s.open_positions ?? 0}`;
+
+    const cards = [
+      ["帳戶餘額", `$${fmt(s.current_balance, 2)}`, ""],
+      ["總損益", `$${fmt(s.total_pnl ?? 0, 2)} (${fmt(s.total_return_pct ?? 0, 2)}%)`, pnlClass(s.total_pnl ?? 0)],
+      ["持倉中", s.open_positions ?? 0, ""],
+      ["已平倉次數", s.full_closes ?? 0, ""],
+      ["勝率", `${fmt(s.win_rate_pct ?? 0, 1)}%`, ""],
+      ["獲利因子", (s.profit_factor === null || s.profit_factor === undefined) ? "N/A" : fmt(s.profit_factor, 2), ""],
+      ["最大回撤", `${fmt(s.max_drawdown_pct ?? 0, 2)}%`, "neg"],
+    ];
+    document.getElementById("ema-stats-grid").innerHTML = cards.map(([label, value, cls]) =>
+      `<div class="card"><div class="label">${label}</div><div class="value ${cls}">${value}</div></div>`
+    ).join("");
+
+    // Positions
+    const posGrid = document.getElementById("ema-pos-grid");
+    if (data.positions.length === 0) {
+      posGrid.innerHTML = "";
+      document.getElementById("ema-pos-empty").style.display = "block";
+    } else {
+      document.getElementById("ema-pos-empty").style.display = "none";
+      posGrid.innerHTML = data.positions.map(p => `
+        <div class="pos-card">
+          <div class="pos-card-head">
+            <span class="symbol">${p.symbol}</span>
+            <span class="tags">
+              <span class="tag tag-${p.direction}">${p.direction}</span>
+            </span>
+          </div>
+          <div class="upnl-line ${pnlClass(p.upnl)}">
+            ${p.upnl === null ? "-" : `$${fmt(p.upnl,2)}`}
+            <span class="pct">${p.upnl === null ? "" : `(${fmt(p.upnl_pct,2)}%)`}</span>
+          </div>
+          <div class="row"><span class="label">策略</span><span>${p.strategy}</span></div>
+          <div class="row"><span class="label">分數</span><span>${p.score}</span></div>
+          <div class="row"><span class="label">進場 / 現價</span><span>${fmt(p.entry, 6)} / ${fmt(p.cur_price, 6)}</span></div>
+          <div class="row"><span class="label">停損</span><span>${fmt(p.stop_loss, 6)}</span></div>
+          <div class="row"><span class="label">TP1</span><span class="${p.tp1_hit ? 'hit' : ''}">${fmt(p.target_1, 6)}${p.tp1_hit ? " ✓" : ""}</span></div>
+          <div class="row"><span class="label">TP2</span><span>${fmt(p.target_2, 6)}</span></div>
+          <div class="row"><span class="label">名目金額</span><span>$${fmt(p.notional, 2)}</span></div>
+          <div class="row"><span class="label">持倉時間</span><span>${p.duration}</span></div>
+        </div>`).join("");
+    }
+
+    // Signals
+    const sigBody = document.querySelector("#ema-sig-table tbody");
+    if (data.signals.length === 0) {
+      sigBody.innerHTML = "";
+      document.getElementById("ema-sig-empty").style.display = "block";
+    } else {
+      document.getElementById("ema-sig-empty").style.display = "none";
+      sigBody.innerHTML = data.signals.map(sg => `
+        <tr>
+          <td>${sg.symbol}</td>
+          <td><span class="tag tag-${sg.direction}">${sg.direction}</span></td>
+          <td>${sg.strategy}</td>
+          <td>${sg.score}</td>
+          <td>${fmt(sg.entry, 6)}</td>
+          <td>${fmt(sg.stop_loss, 6)}</td>
+          <td>${fmt(sg.target1, 6)}</td>
+          <td>${fmt(sg.target2, 6)}</td>
+          <td>${sg.time ?? "-"}</td>
+        </tr>`).join("");
+    }
+
+    // History
+    const histBody = document.querySelector("#ema-hist-table tbody");
+    if (data.history.length === 0) {
+      histBody.innerHTML = "";
+      document.getElementById("ema-hist-empty").style.display = "block";
+    } else {
+      document.getElementById("ema-hist-empty").style.display = "none";
+      histBody.innerHTML = data.history.map(t => `
+        <tr>
+          <td>${t.symbol}</td>
+          <td><span class="tag tag-${t.direction}">${t.direction}</span></td>
+          <td>${t.reason}</td>
+          <td>${fmt(t.entry, 6)}</td>
+          <td>${fmt(t.exit, 6)}</td>
+          <td class="${pnlClass(t.pnl)}">$${fmt(t.pnl, 2)}</td>
+          <td>${t.close_time_str}</td>
+        </tr>`).join("");
+    }
+  } catch (e) {
+    document.getElementById("ema-meta").textContent = "載入失敗，重試中... " + e;
+  }
+}
+
+function refresh() {
+  refreshScalp();
+  refreshEma();
+}
+
+// Tab switching
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+  });
+});
+
+refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>

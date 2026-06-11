@@ -75,16 +75,27 @@ class FibLevels(NamedTuple):
     fib_2618:  float   # target 3 (extended)
 
 
-def calc_fib_levels(close: pd.Series) -> FibLevels:
+def calc_fib_levels(close: pd.Series, direction: str = "LONG") -> FibLevels:
     """Fibonacci extension levels from 20-candle cluster swing."""
-    cluster_low  = close.iloc[-20:-1].min()
-    cluster_high = close.iloc[-1]
+    if direction == "LONG":
+        cluster_low  = close.iloc[-20:-1].min()
+        cluster_high = close.iloc[-1]
+        swing        = cluster_high - cluster_low
+        return FibLevels(
+            fib_0618 = cluster_high - 0.618 * swing,
+            fib_1272 = cluster_high + 0.272 * swing,
+            fib_1618 = cluster_high + 0.618 * swing,
+            fib_2618 = cluster_high + 1.618 * swing,
+        )
+    # SHORT — mirrored around the cluster high / current low
+    cluster_high = close.iloc[-20:-1].max()
+    cluster_low  = close.iloc[-1]
     swing        = cluster_high - cluster_low
     return FibLevels(
-        fib_0618 = cluster_high - 0.618 * swing,
-        fib_1272 = cluster_high + 0.272 * swing,
-        fib_1618 = cluster_high + 0.618 * swing,
-        fib_2618 = cluster_high + 1.618 * swing,
+        fib_0618 = cluster_low + 0.618 * swing,
+        fib_1272 = cluster_low - 0.272 * swing,
+        fib_1618 = cluster_low - 0.618 * swing,
+        fib_2618 = cluster_low - 1.618 * swing,
     )
 
 
@@ -102,14 +113,23 @@ def calc_exit_levels(
     entry: float, atr: float, fib: FibLevels,
     stop_mult: float = 1.5,
     target_mults: tuple = (2.0, 3.0, 4.0),
+    direction: str = "LONG",
 ) -> ExitLevels:
     """ATR-based stop / target / exit levels with Fibonacci overlay."""
-    stop_loss = entry - stop_mult * atr
-    t1        = entry + target_mults[0] * atr
-    t2        = entry + target_mults[1] * atr
-    t3        = entry + target_mults[2] * atr
-    rr        = (t1 - entry) / (entry - stop_loss) if (entry - stop_loss) > 0 else 0.0
-    primary   = min(fib.fib_1618, t2)
+    if direction == "LONG":
+        stop_loss = entry - stop_mult * atr
+        t1        = entry + target_mults[0] * atr
+        t2        = entry + target_mults[1] * atr
+        t3        = entry + target_mults[2] * atr
+        rr        = (t1 - entry) / (entry - stop_loss) if (entry - stop_loss) > 0 else 0.0
+        primary   = min(fib.fib_1618, t2)
+    else:  # SHORT — mirrored
+        stop_loss = entry + stop_mult * atr
+        t1        = entry - target_mults[0] * atr
+        t2        = entry - target_mults[1] * atr
+        t3        = entry - target_mults[2] * atr
+        rr        = (entry - t1) / (stop_loss - entry) if (stop_loss - entry) > 0 else 0.0
+        primary   = max(fib.fib_1618, t2)
     return ExitLevels(
         entry=entry, stop_loss=stop_loss,
         target_1=t1, target_2=t2, target_3=t3,

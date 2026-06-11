@@ -18,7 +18,7 @@ PAPER_FILE = Path(__file__).parent / "paper_account.json"
 @dataclass
 class Position:
     symbol:      str
-    direction:   str      # always "LONG" for this screener (breakout above MAs)
+    direction:   str      # "LONG" (breakout above MAs) or "SHORT" (breakdown below MAs)
     entry_price: float
     stop_loss:   float
     target_1:    float
@@ -61,7 +61,7 @@ class PaperAccount:
         contracts = (self.balance * self.risk_pct) / risk
         pos = Position(
             symbol      = sym,
-            direction   = "LONG",
+            direction   = signal.get("direction", "LONG"),
             entry_price = entry,
             stop_loss   = sl,
             target_1    = signal["target_1"],
@@ -111,12 +111,41 @@ class PaperAccount:
             elif pos.tp2_hit and high >= pos.target_3:
                 events.append(self._close(symbol, pos.target_3, "TP3"))
 
+        else:  # SHORT — mirrored
+            # Stop loss
+            if high >= pos.stop_loss:
+                events.append(self._close(symbol, pos.stop_loss, "SL"))
+            # TP1 — exit 30%, move stop to entry
+            elif not pos.tp1_hit and low <= pos.target_1:
+                pnl = (pos.entry_price - pos.target_1) * pos.contracts * 0.3
+                self.balance += pnl
+                self.history.append(self._record(pos, pos.target_1, "TP1", pnl, 0.3))
+                if symbol in self.positions:
+                    self.positions[symbol].tp1_hit  = True
+                    self.positions[symbol].stop_loss = pos.entry_price   # trail to entry
+                events.append({"symbol": symbol, "reason": "TP1", "pnl": round(pnl, 4)})
+            # TP2 — exit 40%, move stop to target_1
+            elif pos.tp1_hit and not pos.tp2_hit and low <= pos.target_2:
+                pnl = (pos.entry_price - pos.target_2) * pos.contracts * 0.4
+                self.balance += pnl
+                self.history.append(self._record(pos, pos.target_2, "TP2", pnl, 0.4))
+                if symbol in self.positions:
+                    self.positions[symbol].tp2_hit  = True
+                    self.positions[symbol].stop_loss = pos.target_1      # trail to TP1
+                events.append({"symbol": symbol, "reason": "TP2", "pnl": round(pnl, 4)})
+            # TP3 — trail remaining 30%
+            elif pos.tp2_hit and low <= pos.target_3:
+                events.append(self._close(symbol, pos.target_3, "TP3"))
+
         return events
 
     def _close(self, symbol: str, price: float, reason: str) -> dict:
         pos  = self.positions.pop(symbol)
         frac = 0.3 if (pos.tp1_hit and pos.tp2_hit) else (0.7 if pos.tp1_hit else 1.0)
-        pnl  = (price - pos.entry_price) * pos.contracts * frac
+        if pos.direction == "LONG":
+            pnl = (price - pos.entry_price) * pos.contracts * frac
+        else:
+            pnl = (pos.entry_price - price) * pos.contracts * frac
         self.balance += pnl
         rec = self._record(pos, price, reason, pnl, frac, full_close=True)
         self.history.append(rec)

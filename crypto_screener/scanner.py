@@ -10,14 +10,14 @@ from typing import Optional
 from config import (
     CANDLES_MAIN, CANDLES_WEEKLY, BATCH_SIZE, BATCH_DELAY,
     ATR_PERIOD, ATR_STOP_MULT, ATR_TARGET_MULTS, EMA200_SKIP_PCT,
-    MA_PERIODS,
+    MA_PERIODS, SCALP_INTERVAL,
 )
 from indicators import (
     calc_sma, calc_atr, calc_rsi, calc_bbw, calc_adx,
     calc_fib_levels, calc_exit_levels,
 )
-from filters  import apply_hard_filters
-from scoring  import compute_score
+from filters  import apply_hard_filters, apply_hard_filters_short
+from scoring  import compute_score, compute_score_short
 
 log = logging.getLogger(__name__)
 
@@ -98,6 +98,20 @@ def _determine_tier(
     return None
 
 
+def _determine_tier_short(
+    close_last: float, ma200_last: float, ma200_prev: float, close_prev: float
+) -> Optional[str]:
+    """Mirror of _determine_tier() for SHORT setups. Returns TIER A / B / SKIP / None."""
+    if close_last < ma200_last and close_prev < ma200_prev:
+        return "A"
+    if close_last < ma200_last and close_prev >= ma200_prev:
+        return "B"
+    dist = abs(close_last - ma200_last) / ma200_last
+    if close_last > ma200_last and dist <= EMA200_SKIP_PCT:
+        return "SKIP"
+    return None
+
+
 # ── Per-symbol scan ───────────────────────────────────────────────────
 
 async def scan_symbol(
@@ -112,7 +126,12 @@ async def scan_symbol(
     source: either `binance_source` or `bingx_source` module
     mode:   "swing" → 4H | "intraday" → 1H
     """
-    interval      = "4h" if mode == "swing" else "1h"
+    if mode == "swing":
+        interval = "4h"
+    elif mode == "scalp":
+        interval = SCALP_INTERVAL
+    else:
+        interval = "1h"
     weekly_interval = "1w"
 
     # Concurrent fetch
@@ -147,9 +166,16 @@ async def scan_symbol(
     if not pd.isna(weekly_ma20.iloc[-1]) and not pd.isna(weekly_ma20.iloc[-4]):
         weekly_slope = (weekly_ma20.iloc[-1] - weekly_ma20.iloc[-4]) / weekly_ma20.iloc[-4]
 
-    tier = _determine_tier(close.iloc[-1], ma200.iloc[-1], ma200.iloc[-2], close.iloc[-2])
-    if tier in (None, "SKIP"):
-        log.debug("%s: tier=%s, skipped", symbol, tier)
+    c_last  = close.iloc[-1]
+    c_prev  = close.iloc[-2]
+    m200_last = ma200.iloc[-1]
+    m200_prev = ma200.iloc[-2]
+
+    tier_long  = _determine_tier(c_last, m200_last, m200_prev, c_prev)
+    tier_short = _determine_tier_short(c_last, m200_last, m200_prev, c_prev) if mode == "scalp" else None
+
+    if tier_long in (None, "SKIP") and tier_short in (None, "SKIP"):
+        log.debug("%s: tier=%s/%s, skipped", symbol, tier_long, tier_short)
         return None
 
     # 4H-loading annotation for intraday mode
@@ -171,21 +197,39 @@ async def scan_symbol(
         "weekly_slope": weekly_slope,
         "funding_rate": funding,
         "change_24h":   change_24h,
-        "tier":         tier,
         "dual_timeframe": dual_tf,
     }
 
-    passed, reason = apply_hard_filters(indicator_data)
+    direction = "LONG"
+    tier      = tier_long
+    passed    = False
+    reason    = ""
+
+    if tier_long not in (None, "SKIP"):
+        indicator_data["tier"] = tier_long
+        passed, reason = apply_hard_filters(indicator_data)
+
+    if not passed and tier_short not in (None, "SKIP"):
+        indicator_data["tier"] = tier_short
+        ok, short_reason = apply_hard_filters_short(indicator_data)
+        if ok:
+            direction, tier, passed, reason = "SHORT", tier_short, True, ""
+        elif not reason:
+            reason = short_reason
+
     if not passed:
         log.debug("%s: filter failed: %s", symbol, reason)
         return None
 
-    score, breakdown = compute_score(indicator_data)
+    if direction == "LONG":
+        score, breakdown = compute_score(indicator_data)
+    else:
+        score, breakdown = compute_score_short(indicator_data)
 
     atr_series = calc_atr(high, low, close, ATR_PERIOD)
     atr_now    = atr_series.iloc[-1]
-    fib        = calc_fib_levels(close)
-    exits      = calc_exit_levels(close.iloc[-1], atr_now, fib, ATR_STOP_MULT, ATR_TARGET_MULTS)
+    fib        = calc_fib_levels(close, direction)
+    exits      = calc_exit_levels(close.iloc[-1], atr_now, fib, ATR_STOP_MULT, ATR_TARGET_MULTS, direction)
 
     rsi_s       = calc_rsi(close, 14)
     adx_s, _, _ = calc_adx(high, low, close, 14)
@@ -196,13 +240,20 @@ async def scan_symbol(
     candle_range = high.iloc[-1] - low.iloc[-1]
     body_pct    = abs(close.iloc[-1] - open_.iloc[-1]) / candle_range if candle_range else 0
 
-    weekly_status = (
-        "STRONG" if (weekly_close.iloc[-1] > weekly_ma20.iloc[-1] and weekly_slope > 0)
-        else ("OK" if weekly_close.iloc[-1] > weekly_ma20.iloc[-1] else "-")
-    )
+    if direction == "LONG":
+        weekly_status = (
+            "STRONG" if (weekly_close.iloc[-1] > weekly_ma20.iloc[-1] and weekly_slope > 0)
+            else ("OK" if weekly_close.iloc[-1] > weekly_ma20.iloc[-1] else "-")
+        )
+    else:
+        weekly_status = (
+            "STRONG" if (weekly_close.iloc[-1] < weekly_ma20.iloc[-1] and weekly_slope < 0)
+            else ("OK" if weekly_close.iloc[-1] < weekly_ma20.iloc[-1] else "-")
+        )
 
     return {
         "symbol":         symbol,
+        "direction":      direction,
         "tier":           tier,
         "score":          score,
         "breakdown":      breakdown,
@@ -225,10 +276,10 @@ async def scan_symbol(
         "risk_reward":    exits.risk_reward,
         "fib_support":    round(fib.fib_0618, 8),
         "alert": (
-            f"TIER {tier} | RSI {rsi_s.iloc[-1]:.0f} | "
+            f"{direction} TIER {tier} | RSI {rsi_s.iloc[-1]:.0f} | "
             f"ADX {adx_s.iloc[-1]:.0f} | "
             f"R:R {exits.risk_reward:.1f} | "
-            f"Target +{(exits.primary_target - exits.entry) / exits.entry * 100:.1f}%"
+            f"Target {abs(exits.primary_target - exits.entry) / exits.entry * 100:.1f}%"
         ),
     }
 

@@ -3,6 +3,8 @@ ema_scanner/state.json
 ema_scanner/bot_state.json
 ema_scanner/paper_account.json
 crypto_screener/paper_account.json
+crypto_screener/paper_account_scalp.json
+crypto_screener/scalp_state.json
 ema_scanner/signals_log.json
 ema_scanner/*.log
 *.log

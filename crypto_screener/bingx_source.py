@@ -114,6 +114,29 @@ async def fetch_funding(session: aiohttp.ClientSession, symbol: str) -> float:
     return 0.0
 
 
+async def fetch_price(session: aiohttp.ClientSession, symbol: str) -> Optional[float]:
+    """Return current last/mark price for symbol (used for fast position checks)."""
+    data = await _get(
+        session,
+        f"{BINGX_BASE}/openApi/swap/v2/quote/ticker",
+        {"symbol": symbol},
+    )
+    if not data:
+        return None
+    items = data.get("data", [])
+    if isinstance(items, dict):
+        items = [items]
+    for it in items:
+        for key in ("lastPrice", "price"):
+            try:
+                v = it.get(key)
+                if v is not None:
+                    return float(v)
+            except (TypeError, ValueError):
+                pass
+    return None
+
+
 async def fetch_ticker_24h(session: aiohttp.ClientSession, symbol: str) -> float:
     """Return 24h price change percent (e.g. 3.5 means +3.5%)."""
     data = await _get(
