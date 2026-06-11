@@ -67,3 +67,7 @@ VOL_SPIKE_RATIO        = 3.5   # minimum volume multiple for spike strategy
 SCALP_PAPER_INITIAL_BALANCE = 10_000.0
 SCALP_PAPER_RISK_PCT        = 0.01      # 1% per trade (tighter risk for HF)
 SCALP_DASHBOARD_PORT        = 5000
+
+# ── Discord ────────────────────────────────────────────────────
+# 貼上你的 Webhook URL，留空則不發送
+SCALP_DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1514452738388394117/ODRJqHBCALHUWQOs6C9ZK0mhrYh8bcY_BU3b544oK8zKOsC14A15m0KMdld2VBiE_QSs"

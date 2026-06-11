@@ -31,9 +31,11 @@ import aiohttp
 import bingx_source as source
 from scanner import run_scan
 from paper_account import PaperAccount
+from discord_alert import send_daily_report
 from config import (
     SCALP_INTERVAL, SCALP_SCAN_INTERVAL_SECS, SCALP_CHECK_INTERVAL_SECS,
     SCALP_COOLDOWN_SECS, SCALP_PAPER_INITIAL_BALANCE, SCALP_PAPER_RISK_PCT,
+    SCALP_DISCORD_WEBHOOK,
 )
 
 TW_TZ      = timezone(timedelta(hours=8))
@@ -192,6 +194,22 @@ async def scan_loop(account: PaperAccount, cooldown: dict[str, float]) -> None:
         await asyncio.sleep(SCALP_SCAN_INTERVAL_SECS)
 
 
+async def _send_shutdown_report(account: PaperAccount) -> None:
+    """Send today's trading summary to Discord on shutdown."""
+    if not SCALP_DISCORD_WEBHOOK:
+        return
+    try:
+        today = datetime.now(TW_TZ).date()
+        history_today = [
+            t for t in account.history
+            if datetime.fromtimestamp(t["close_time"], tz=TW_TZ).date() == today
+        ]
+        await send_daily_report(account.get_stats(), history_today, "bingx", SCALP_DISCORD_WEBHOOK)
+        print("Discord 關閉報告已發送")
+    except Exception as e:
+        log.warning("Failed to send shutdown report: %s", e)
+
+
 async def main_async() -> None:
     if PAPER_FILE.exists():
         account = PaperAccount.load(PAPER_FILE)
@@ -200,11 +218,17 @@ async def main_async() -> None:
 
     cooldown: dict[str, float] = {}
 
-    async with aiohttp.ClientSession() as session:
-        await asyncio.gather(
-            position_loop(account, session),
-            scan_loop(account, cooldown),
-        )
+    try:
+        async with aiohttp.ClientSession() as session:
+            await asyncio.gather(
+                position_loop(account, session),
+                scan_loop(account, cooldown),
+            )
+    except asyncio.CancelledError:
+        pass
+    finally:
+        account.save(PAPER_FILE)
+        await _send_shutdown_report(account)
 
 
 def main() -> None:

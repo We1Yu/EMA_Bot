@@ -415,6 +415,49 @@
       text-align: right;
       max-width: 200px;
     }
+
+    /* History filter buttons */
+    .filter-bar {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .filter-btn {
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 5px 14px;
+      font-size: 0.82em;
+      font-weight: 600;
+      border-radius: 20px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all .15s ease;
+    }
+
+    .filter-btn:hover {
+      border-color: #484f58;
+      color: var(--text);
+    }
+
+    .filter-btn.active {
+      color: var(--text);
+      border-color: var(--blue);
+      background: rgba(88, 166, 255, .12);
+    }
+
+    .filter-btn.active.win {
+      border-color: var(--green);
+      background: rgba(63, 185, 80, .12);
+      color: var(--green);
+    }
+
+    .filter-btn.active.loss {
+      border-color: var(--red);
+      background: rgba(248, 81, 73, .12);
+      color: var(--red);
+    }
   </style>
 </head>
 
@@ -509,6 +552,11 @@
 
     <section>
       <h2>📜 最近成交紀錄 (Recent Closes)</h2>
+      <div class="filter-bar">
+        <button class="filter-btn active" data-filter="all" onclick="setHistFilter('scalp','all',this)">全部</button>
+        <button class="filter-btn win" data-filter="win" onclick="setHistFilter('scalp','win',this)">獲利</button>
+        <button class="filter-btn loss" data-filter="loss" onclick="setHistFilter('scalp','loss',this)">虧損</button>
+      </div>
       <div class="scroll-x">
         <table id="hist-table">
           <thead>
@@ -600,6 +648,11 @@
 
     <section>
       <h2>📜 最近成交紀錄 (Recent Closes)</h2>
+      <div class="filter-bar">
+        <button class="filter-btn active" data-filter="all" onclick="setHistFilter('ema','all',this)">全部</button>
+        <button class="filter-btn win" data-filter="win" onclick="setHistFilter('ema','win',this)">獲利</button>
+        <button class="filter-btn loss" data-filter="loss" onclick="setHistFilter('ema','loss',this)">虧損</button>
+      </div>
       <div class="scroll-x">
         <table id="ema-hist-table">
           <thead>
@@ -626,6 +679,70 @@
       return Number(n).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: d });
     }
     function pnlClass(v) { return v > 0 ? "pos" : (v < 0 ? "neg" : ""); }
+
+    // Store history for filtering
+    const _histData = { scalp: [], ema: [] };
+    const _histFilter = { scalp: "all", ema: "all" };
+
+    function setHistFilter(tab, filter, btn) {
+      _histFilter[tab] = filter;
+      const bar = btn.closest(".filter-bar");
+      bar.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      renderHistory(tab);
+    }
+
+    function applyFilter(data, filter) {
+      if (filter === "win")  return data.filter(t => t.pnl > 0);
+      if (filter === "loss") return data.filter(t => t.pnl <= 0);
+      return data;
+    }
+
+    function renderHistory(tab) {
+      if (tab === "scalp") {
+        const filtered = applyFilter(_histData.scalp, _histFilter.scalp);
+        const histBody = document.querySelector("#hist-table tbody");
+        const empty = document.getElementById("hist-empty");
+        if (filtered.length === 0) {
+          histBody.innerHTML = "";
+          empty.style.display = "block";
+        } else {
+          empty.style.display = "none";
+          histBody.innerHTML = filtered.map(t => `
+        <tr>
+          <td>${t.symbol}</td>
+          <td><span class="tag tag-${t.direction}">${t.direction}</span></td>
+          <td style="color:var(--muted);font-size:0.85em">${t.strategy || "-"}</td>
+          <td>${t.reason}</td>
+          <td>${fmt(t.entry, 6)}</td>
+          <td>${fmt(t.exit, 6)}</td>
+          <td class="${pnlClass(t.pnl)}">$${fmt(t.pnl, 2)}</td>
+          <td style="color:var(--muted);font-size:0.82em;white-space:normal;max-width:280px">${t.entry_logic || "-"}</td>
+          <td>${t.close_time_str}</td>
+        </tr>`).join("");
+        }
+      } else {
+        const filtered = applyFilter(_histData.ema, _histFilter.ema);
+        const histBody = document.querySelector("#ema-hist-table tbody");
+        const empty = document.getElementById("ema-hist-empty");
+        if (filtered.length === 0) {
+          histBody.innerHTML = "";
+          empty.style.display = "block";
+        } else {
+          empty.style.display = "none";
+          histBody.innerHTML = filtered.map(t => `
+        <tr>
+          <td>${t.symbol}</td>
+          <td><span class="tag tag-${t.direction}">${t.direction}</span></td>
+          <td>${t.reason}</td>
+          <td>${fmt(t.entry, 6)}</td>
+          <td>${fmt(t.exit, 6)}</td>
+          <td class="${pnlClass(t.pnl)}">$${fmt(t.pnl, 2)}</td>
+          <td>${t.close_time_str}</td>
+        </tr>`).join("");
+        }
+      }
+    }
 
     async function refreshScalp() {
       try {
@@ -704,25 +821,8 @@
         }
 
         // History
-        const histBody = document.querySelector("#hist-table tbody");
-        if (data.history.length === 0) {
-          histBody.innerHTML = "";
-          document.getElementById("hist-empty").style.display = "block";
-        } else {
-          document.getElementById("hist-empty").style.display = "none";
-          histBody.innerHTML = data.history.map(t => `
-        <tr>
-          <td>${t.symbol}</td>
-          <td><span class="tag tag-${t.direction}">${t.direction}</span></td>
-          <td style="color:var(--muted);font-size:0.85em">${t.strategy || "-"}</td>
-          <td>${t.reason}</td>
-          <td>${fmt(t.entry, 6)}</td>
-          <td>${fmt(t.exit, 6)}</td>
-          <td class="${pnlClass(t.pnl)}">$${fmt(t.pnl, 2)}</td>
-          <td style="color:var(--muted);font-size:0.82em;white-space:normal;max-width:280px">${t.entry_logic || "-"}</td>
-          <td>${t.close_time_str}</td>
-        </tr>`).join("");
-        }
+        _histData.scalp = data.history;
+        renderHistory("scalp");
       } catch (e) {
         document.getElementById("meta").textContent = "載入失敗，重試中... " + e;
       }
@@ -801,23 +901,8 @@
         }
 
         // History
-        const histBody = document.querySelector("#ema-hist-table tbody");
-        if (data.history.length === 0) {
-          histBody.innerHTML = "";
-          document.getElementById("ema-hist-empty").style.display = "block";
-        } else {
-          document.getElementById("ema-hist-empty").style.display = "none";
-          histBody.innerHTML = data.history.map(t => `
-        <tr>
-          <td>${t.symbol}</td>
-          <td><span class="tag tag-${t.direction}">${t.direction}</span></td>
-          <td>${t.reason}</td>
-          <td>${fmt(t.entry, 6)}</td>
-          <td>${fmt(t.exit, 6)}</td>
-          <td class="${pnlClass(t.pnl)}">$${fmt(t.pnl, 2)}</td>
-          <td>${t.close_time_str}</td>
-        </tr>`).join("");
-        }
+        _histData.ema = data.history;
+        renderHistory("ema");
       } catch (e) {
         document.getElementById("ema-meta").textContent = "載入失敗，重試中... " + e;
       }

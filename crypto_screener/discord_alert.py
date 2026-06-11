@@ -67,53 +67,75 @@ def build_embed(signal: dict) -> dict:
 
 def build_daily_report_embed(stats: dict, history_today: list[dict], exchange: str) -> dict:
     """Build a daily summary embed from paper account stats."""
-    now    = datetime.now(TW_TZ)
-    date   = now.strftime("%Y/%m/%d")
+    now  = datetime.now(TW_TZ)
+    date = now.strftime("%Y/%m/%d")
+    time_str = now.strftime("%H:%M TWN")
 
-    # Today's closed trades
-    wins   = [t for t in history_today if t.get("full_close") and t["pnl"] > 0]
-    losses = [t for t in history_today if t.get("full_close") and t["pnl"] <= 0]
-    pnl_today = sum(t["pnl"] for t in history_today)
-
-    win_rate = (
-        round(len(wins) / (len(wins) + len(losses)) * 100, 1)
-        if (wins or losses) else 0
+    # Today's closed trades — use tp1_hit for win/loss (matches paper_account logic)
+    full_today = [t for t in history_today if t.get("full_close")]
+    wins_today   = [t for t in full_today if t.get("tp1_hit", t["pnl"] > 0)]
+    losses_today = [t for t in full_today if not t.get("tp1_hit", t["pnl"] > 0)]
+    pnl_today  = sum(t["pnl"] for t in history_today)
+    win_rate_today = (
+        round(len(wins_today) / (len(wins_today) + len(losses_today)) * 100, 1)
+        if (wins_today or losses_today) else 0
     )
 
-    # Equity curve emoji
     emoji = "📈" if stats["total_pnl"] >= 0 else "📉"
     pf    = stats.get("profit_factor")
 
+    # Exit type counts
+    sl_count  = stats.get("sl_count", 0)
+    tp1_count = stats.get("tp1_count", 0)
+    tp2_count = stats.get("tp2_count", 0)
+    tp3_count = stats.get("tp3_count", 0)
+
     fields = [
-        {"name": "📅 Date",             "value": date,                                         "inline": True},
-        {"name": "🏦 Exchange",         "value": exchange.upper(),                             "inline": True},
-        {"name": "💰 Balance",          "value": f"${stats['current_balance']:,.2f}",          "inline": True},
-        {"name": "📊 Total Return",     "value": f"{stats['return_pct']:+.2f}%  (${stats['total_pnl']:+,.2f})", "inline": True},
-        {"name": "📉 Max Drawdown",     "value": f"{stats['max_drawdown_pct']:.2f}%",          "inline": True},
-        {"name": "⚖️ Profit Factor",   "value": f"{pf:.2f}" if pf else "N/A",                 "inline": True},
-        {"name": "🏆 All-time Win Rate","value": f"{stats['win_rate']:.1f}%  ({stats['wins']}W / {stats['losses']}L)", "inline": True},
-        {"name": "📋 Full Closes",      "value": str(stats["full_closes"]),                    "inline": True},
-        {"name": "🔓 Open Positions",   "value": str(stats["open_positions"]),                 "inline": True},
-        {"name": "📆 Today's PnL",      "value": f"${pnl_today:+,.2f}  (W:{len(wins)} L:{len(losses)} WR:{win_rate}%)", "inline": False},
+        {"name": "📅 日期",           "value": date,                                                           "inline": True},
+        {"name": "🏦 交易所",         "value": exchange.upper(),                                               "inline": True},
+        {"name": "💰 帳戶餘額",       "value": f"${stats['current_balance']:,.2f}",                            "inline": True},
+        {"name": "📊 總報酬",         "value": f"{stats['return_pct']:+.2f}%  (${stats['total_pnl']:+,.2f})",  "inline": True},
+        {"name": "📉 最大回撤",       "value": f"{stats['max_drawdown_pct']:.2f}%",                            "inline": True},
+        {"name": "⚖️ 獲利因子",      "value": f"{pf:.2f}" if pf else "N/A",                                   "inline": True},
+        {"name": "🏆 累計勝率",       "value": f"{stats['win_rate']:.1f}%  ({stats['wins']}勝 / {stats['losses']}敗)", "inline": True},
+        {"name": "📋 已平倉",         "value": str(stats["full_closes"]),                                      "inline": True},
+        {"name": "🔓 持倉中",         "value": str(stats["open_positions"]),                                   "inline": True},
+        {"name": "🎯 出場統計 (累計)", "value": f"SL {sl_count}  TP1 {tp1_count}  TP2 {tp2_count}  TP3 {tp3_count}", "inline": False},
+        {"name": "📆 今日損益",       "value": f"${pnl_today:+,.2f}  (勝{len(wins_today)} 敗{len(losses_today)} 勝率{win_rate_today}%)", "inline": False},
     ]
 
-    if history_today:
-        recent = history_today[-5:][::-1]
-        lines  = []
-        for t in recent:
-            icon = "✅" if t["pnl"] > 0 else "❌"
-            lines.append(f"{icon} {t['symbol']}  {t['reason']}  ${t['pnl']:+.2f}")
+    # Per-strategy breakdown
+    by_strategy = stats.get("by_strategy", {})
+    if by_strategy:
+        lines = []
+        for strat, s in by_strategy.items():
+            wr = round(s["wins"] / s["trades"] * 100, 1) if s["trades"] else 0
+            lines.append(f"`{strat}` {s['trades']}筆  ${s['pnl']:+.2f}  勝率{wr}%")
         fields.append({
-            "name":   "🕐 Recent Trades (last 5 today)",
+            "name":   "📂 各策略統計",
+            "value":  "\n".join(lines) or "—",
+            "inline": False,
+        })
+
+    # Today's trade list
+    if full_today:
+        lines = []
+        for t in reversed(full_today[-10:]):
+            icon    = "✅" if t.get("tp1_hit", t["pnl"] > 0) else "❌"
+            strat   = t.get("strategy", "—")
+            reason  = t.get("reason", "—")
+            lines.append(f"{icon} {t['symbol']}  `{strat}`  {reason}  ${t['pnl']:+.2f}")
+        fields.append({
+            "name":   f"📜 今日交易明細 (最近 {min(len(full_today), 10)} 筆)",
             "value":  "\n".join(lines) or "—",
             "inline": False,
         })
 
     return {
-        "title":  f"{emoji} Daily Virtual Account Report — {date}",
+        "title":  f"{emoji} 高頻 Scalp Bot 關閉報告 — {date}",
         "color":  0x00C851 if stats["total_pnl"] >= 0 else 0xFF4444,
         "fields": fields,
-        "footer": {"text": f"Crypto Screener v2 | Virtual Paper Account | 00:00 TWN"},
+        "footer": {"text": f"BingX 高頻虛擬交易機器人 | 關閉時間 {time_str}"},
     }
 
 
