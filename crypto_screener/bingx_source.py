@@ -4,6 +4,7 @@ Mirrors the Binance fetch interface so scanner.py can swap between them.
 """
 
 import logging
+import time
 from typing import Optional
 
 import aiohttp
@@ -17,8 +18,17 @@ STABLECOIN_KEYWORDS = {
     "FRAX", "USDP", "GUSD", "SUSD",
 }
 
+_rate_limit_until: float = 0.0  # 速率限制解除時間（Unix 秒）
+
 
 async def _get(session: aiohttp.ClientSession, url: str, params: dict) -> Optional[dict]:
+    global _rate_limit_until
+    now = time.time()
+    if now < _rate_limit_until:
+        remaining = int(_rate_limit_until - now)
+        log.warning("BingX rate-limited, skipping request, %d seconds remaining", remaining)
+        return None
+
     try:
         async with session.get(
             url, params=params, timeout=aiohttp.ClientTimeout(total=10)
@@ -28,6 +38,16 @@ async def _get(session: aiohttp.ClientSession, url: str, params: dict) -> Option
                 return data
             if isinstance(data, dict) and data.get("code") == 109415:
                 return None   # contract suspended — silent skip
+            if isinstance(data, dict) and data.get("code") == 100410:
+                msg = data.get("msg", "")
+                try:
+                    unblock_ms = int(msg.split("after ")[-1].strip())
+                    _rate_limit_until = unblock_ms / 1000.0
+                except (ValueError, IndexError):
+                    _rate_limit_until = time.time() + 3600
+                wait_sec = max(0, int(_rate_limit_until - time.time()))
+                log.warning("BingX API rate ban! Will unblock in %d seconds (code=100410)", wait_sec)
+                return None
             log.debug("BingX non-zero code: %s", data)
             return None
     except Exception as e:

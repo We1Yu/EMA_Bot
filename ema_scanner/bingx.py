@@ -14,9 +14,18 @@ STABLECOIN_KEYWORDS = {"USDC", "BUSD", "TUSD", "FDUSD", "DAI", "USDD", "FRAX", "
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # 秒
 
+_rate_limit_until: float = 0.0  # 速率限制解除時間（Unix 秒）
+
 
 def _get(url: str, params: dict) -> dict | None:
     """帶重試機制的 GET 請求"""
+    global _rate_limit_until
+    now = time.time()
+    if now < _rate_limit_until:
+        remaining = int(_rate_limit_until - now)
+        print(f"[BingX] 速率限制中，跳過請求，還需等待 {remaining} 秒")
+        return None
+
     for attempt in range(MAX_RETRIES):
         try:
             resp = requests.get(url, params=params, timeout=10)
@@ -26,6 +35,17 @@ def _get(url: str, params: dict) -> dict | None:
                 return data
             # 合約暫停（109415）→ 靜默略過，不印錯誤
             if data.get("code") == 109415:
+                return None
+            # 頻率封鎖（100410）→ 解析解除時間，停止所有請求
+            if data.get("code") == 100410:
+                msg = data.get("msg", "")
+                try:
+                    unblock_ms = int(msg.split("after ")[-1].strip())
+                    _rate_limit_until = unblock_ms / 1000.0
+                except (ValueError, IndexError):
+                    _rate_limit_until = time.time() + 3600
+                wait_sec = max(0, int(_rate_limit_until - time.time()))
+                print(f"[BingX] API 頻率封鎖！將在 {wait_sec} 秒後解除，暫停所有請求 (code=100410)")
                 return None
             # 其他業務錯誤才印出
             print(f"[BingX] 業務錯誤 code={data.get('code')} msg={data.get('msg')}")

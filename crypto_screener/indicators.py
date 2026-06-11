@@ -13,6 +13,11 @@ def calc_sma(series: pd.Series, period: int) -> pd.Series:
     return series.rolling(period).mean()
 
 
+def calc_ema(series: pd.Series, period: int) -> pd.Series:
+    """Exponential moving average."""
+    return series.ewm(span=period, adjust=False).mean()
+
+
 def calc_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     """RSI using Wilder's EMA smoothing (ewm com=period-1)."""
     delta    = series.diff()

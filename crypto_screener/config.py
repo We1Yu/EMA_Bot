@@ -54,9 +54,16 @@ PAPER_RISK_PCT        = 0.02    # 2% per trade
 
 # ── High-frequency "scalp" mode ──────────────────────────────
 SCALP_INTERVAL            = "5m"        # candle interval used for scoring
-SCALP_SCAN_INTERVAL_SECS  = 90          # full re-scan (look for new signals)
+SCALP_SCAN_INTERVAL_SECS  = 60          # full re-scan (look for new signals)
 SCALP_CHECK_INTERVAL_SECS = 12          # open-position price check / exit
-SCALP_COOLDOWN_SECS       = 15 * 60     # per-symbol dedupe window
+SCALP_COOLDOWN_SECS       = 5 * 60      # per-symbol dedupe window
+
+# ── Extra scalp strategies ─────────────────────────────────────
+RSI_BOUNCE_OVERSOLD    = 33    # RSI threshold for oversold bounce (LONG)
+RSI_BOUNCE_OVERBOUGHT  = 67    # RSI threshold for overbought bounce (SHORT)
+EMA_FAST_PERIOD        = 9     # fast EMA for crossover strategy
+EMA_SLOW_PERIOD        = 21    # slow EMA for crossover strategy
+VOL_SPIKE_RATIO        = 3.5   # minimum volume multiple for spike strategy
 SCALP_PAPER_INITIAL_BALANCE = 10_000.0
 SCALP_PAPER_RISK_PCT        = 0.01      # 1% per trade (tighter risk for HF)
 SCALP_DASHBOARD_PORT        = 5000

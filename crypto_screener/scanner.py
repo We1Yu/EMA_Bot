@@ -11,9 +11,11 @@ from config import (
     CANDLES_MAIN, CANDLES_WEEKLY, BATCH_SIZE, BATCH_DELAY,
     ATR_PERIOD, ATR_STOP_MULT, ATR_TARGET_MULTS, EMA200_SKIP_PCT,
     MA_PERIODS, SCALP_INTERVAL,
+    RSI_BOUNCE_OVERSOLD, RSI_BOUNCE_OVERBOUGHT,
+    EMA_FAST_PERIOD, EMA_SLOW_PERIOD, VOL_SPIKE_RATIO,
 )
 from indicators import (
-    calc_sma, calc_atr, calc_rsi, calc_bbw, calc_adx,
+    calc_sma, calc_ema, calc_atr, calc_rsi, calc_bbw, calc_adx,
     calc_fib_levels, calc_exit_levels,
 )
 from filters  import apply_hard_filters, apply_hard_filters_short
@@ -112,6 +114,250 @@ def _determine_tier_short(
     return None
 
 
+# ── Strategy helpers ─────────────────────────────────────────────────
+
+def _build_signal_base(symbol: str, direction: str, strategy: str, score: int,
+                       entry: float, sl: float, t1: float, t2: float, t3: float,
+                       rsi: float, vol_ratio: float, body_pct: float, adx: float,
+                       funding: float, breakdown: dict, alert: str) -> dict:
+    """Build a complete signal dict with all fields the dashboard expects."""
+    if direction == "LONG":
+        rr = (t1 - entry) / (entry - sl) if (entry - sl) > 0 else 0.0
+    else:
+        rr = (entry - t1) / (sl - entry) if (sl - entry) > 0 else 0.0
+    return {
+        "symbol":         symbol,
+        "direction":      direction,
+        "tier":           "C",
+        "strategy":       strategy,
+        "score":          score,
+        "breakdown":      breakdown,
+        "rsi":            round(rsi, 1),
+        "vol_ratio":      round(vol_ratio, 2),
+        "body_pct":       round(body_pct, 1),
+        "adx":            round(adx, 1),
+        "bbw_ratio":      0.0,
+        "ma_spread_pct":  0.0,
+        "funding":        round(funding * 100, 4),
+        "change_24h":     0.0,
+        "weekly":         "-",
+        "dual_tf_status": "",
+        "entry":          round(entry, 8),
+        "stop_loss":      round(sl, 8),
+        "target_1":       round(t1, 8),
+        "target_2":       round(t2, 8),
+        "target_3":       round(t3, 8),
+        "primary_target": round(t2, 8),
+        "risk_reward":    round(rr, 2),
+        "fib_support":    0.0,
+        "alert":          alert,
+    }
+
+
+def _try_rsi_bounce(symbol: str, df: pd.DataFrame, funding: float) -> Optional[dict]:
+    """RSI oversold/overbought mean-reversion scalp."""
+    close  = df["close"]
+    high   = df["high"]
+    low    = df["low"]
+    open_  = df["open"]
+    volume = df["volume"]
+
+    rsi_s = calc_rsi(close, 14)
+    atr_s = calc_atr(high, low, close, 14)
+
+    rsi_now  = rsi_s.iloc[-1]
+    rsi_prev = rsi_s.iloc[-2]
+    atr_now  = atr_s.iloc[-1]
+    entry    = close.iloc[-1]
+
+    if any(pd.isna(v) for v in [rsi_now, rsi_prev, atr_now]) or atr_now <= 0 or entry <= 0:
+        return None
+
+    direction = None
+    if rsi_now <= RSI_BOUNCE_OVERSOLD and rsi_now > rsi_prev and close.iloc[-1] > open_.iloc[-1]:
+        direction = "LONG"
+    elif rsi_now >= RSI_BOUNCE_OVERBOUGHT and rsi_now < rsi_prev and close.iloc[-1] < open_.iloc[-1]:
+        direction = "SHORT"
+    if direction is None:
+        return None
+
+    vol_avg   = volume.iloc[-6:-1].mean()
+    vol_ratio = volume.iloc[-1] / vol_avg if vol_avg > 0 else 1.0
+
+    score = 60
+    if direction == "LONG":
+        score += 10 if rsi_now <= 25 else (5 if rsi_now <= 30 else 0)
+    else:
+        score += 10 if rsi_now >= 75 else (5 if rsi_now >= 70 else 0)
+    score += 8 if vol_ratio > 2.5 else (4 if vol_ratio > 1.5 else 0)
+
+    candle_range = high.iloc[-1] - low.iloc[-1]
+    body_pct = abs(close.iloc[-1] - open_.iloc[-1]) / candle_range * 100 if candle_range > 0 else 0.0
+
+    if direction == "LONG":
+        sl, t1, t2, t3 = (entry - 1.2 * atr_now, entry + 1.8 * atr_now,
+                          entry + 2.8 * atr_now, entry + 3.8 * atr_now)
+    else:
+        sl, t1, t2, t3 = (entry + 1.2 * atr_now, entry - 1.8 * atr_now,
+                          entry - 2.8 * atr_now, entry - 3.8 * atr_now)
+
+    return _build_signal_base(
+        symbol, direction, "RSI_BOUNCE", score,
+        entry, sl, t1, t2, t3,
+        rsi=rsi_now, vol_ratio=vol_ratio, body_pct=body_pct, adx=0.0,
+        funding=funding,
+        breakdown={"rsi_now": round(rsi_now, 1), "rsi_prev": round(rsi_prev, 1), "vol_ratio": round(vol_ratio, 2)},
+        alert=f"{direction} RSI_BOUNCE | RSI {rsi_now:.0f}→{rsi_prev:.0f} | vol×{vol_ratio:.1f}",
+    )
+
+
+def _try_ema_cross(symbol: str, df: pd.DataFrame) -> Optional[dict]:
+    """EMA(9/21) crossover with volume and RSI confirmation."""
+    close  = df["close"]
+    high   = df["high"]
+    low    = df["low"]
+    open_  = df["open"]
+    volume = df["volume"]
+
+    ema_fast = calc_ema(close, EMA_FAST_PERIOD)
+    ema_slow = calc_ema(close, EMA_SLOW_PERIOD)
+    rsi_s    = calc_rsi(close, 14)
+    atr_s    = calc_atr(high, low, close, 14)
+
+    ef_now, ef_prev = ema_fast.iloc[-1], ema_fast.iloc[-2]
+    es_now, es_prev = ema_slow.iloc[-1], ema_slow.iloc[-2]
+    rsi_now  = rsi_s.iloc[-1]
+    atr_now  = atr_s.iloc[-1]
+    entry    = close.iloc[-1]
+
+    if any(pd.isna(v) for v in [ef_now, ef_prev, es_now, es_prev, rsi_now, atr_now]):
+        return None
+    if atr_now <= 0 or entry <= 0:
+        return None
+
+    vol_avg   = volume.iloc[-6:-1].mean()
+    vol_ratio = volume.iloc[-1] / vol_avg if vol_avg > 0 else 1.0
+    if vol_ratio < 1.2:
+        return None
+
+    direction = None
+    if ef_prev <= es_prev and ef_now > es_now and 35 <= rsi_now <= 65:
+        direction = "LONG"
+    elif ef_prev >= es_prev and ef_now < es_now and 35 <= rsi_now <= 65:
+        direction = "SHORT"
+    if direction is None:
+        return None
+
+    score = 55
+    score += 5 if 45 <= rsi_now <= 55 else 0
+    score += 8 if vol_ratio > 2.5 else (4 if vol_ratio > 1.5 else 0)
+
+    adx_val = 0.0
+    try:
+        adx_s, plus_di, minus_di = calc_adx(high, low, close, 14)
+        adx_val = adx_s.iloc[-1]
+        if not pd.isna(adx_val) and adx_val > 20:
+            if direction == "LONG" and plus_di.iloc[-1] > minus_di.iloc[-1]:
+                score += 5
+            elif direction == "SHORT" and minus_di.iloc[-1] > plus_di.iloc[-1]:
+                score += 5
+        else:
+            adx_val = 0.0
+    except Exception:
+        pass
+
+    candle_range = high.iloc[-1] - low.iloc[-1]
+    body_pct = abs(close.iloc[-1] - open_.iloc[-1]) / candle_range * 100 if candle_range > 0 else 0.0
+
+    if direction == "LONG":
+        sl, t1, t2, t3 = (entry - 1.5 * atr_now, entry + 2.0 * atr_now,
+                          entry + 3.0 * atr_now, entry + 4.0 * atr_now)
+    else:
+        sl, t1, t2, t3 = (entry + 1.5 * atr_now, entry - 2.0 * atr_now,
+                          entry - 3.0 * atr_now, entry - 4.0 * atr_now)
+
+    return _build_signal_base(
+        symbol, direction, "EMA_CROSS", score,
+        entry, sl, t1, t2, t3,
+        rsi=rsi_now, vol_ratio=vol_ratio, body_pct=body_pct, adx=adx_val,
+        funding=0.0,
+        breakdown={"ema_fast": round(ef_now, 6), "ema_slow": round(es_now, 6), "rsi": round(rsi_now, 1)},
+        alert=f"{direction} EMA_CROSS({EMA_FAST_PERIOD}/{EMA_SLOW_PERIOD}) | RSI {rsi_now:.0f} | vol×{vol_ratio:.1f} | ADX {adx_val:.0f}",
+    )
+
+
+def _try_vol_spike(symbol: str, df: pd.DataFrame) -> Optional[dict]:
+    """Monster-volume directional spike — momentum entry."""
+    close  = df["close"]
+    high   = df["high"]
+    low    = df["low"]
+    open_  = df["open"]
+    volume = df["volume"]
+
+    atr_s = calc_atr(high, low, close, 14)
+    rsi_s = calc_rsi(close, 14)
+
+    atr_now = atr_s.iloc[-1]
+    rsi_now = rsi_s.iloc[-1]
+    entry   = close.iloc[-1]
+    c_high  = high.iloc[-1]
+    c_low   = low.iloc[-1]
+    c_open  = open_.iloc[-1]
+
+    if pd.isna(atr_now) or atr_now <= 0 or entry <= 0:
+        return None
+
+    vol_avg   = volume.iloc[-21:-1].mean()
+    vol_ratio = volume.iloc[-1] / vol_avg if vol_avg > 0 else 1.0
+    if vol_ratio < VOL_SPIKE_RATIO:
+        return None
+
+    candle_range = c_high - c_low
+    if candle_range <= 0:
+        return None
+
+    body_pct = abs(entry - c_open) / candle_range
+    if body_pct < 0.55:
+        return None
+
+    close_pos = (entry - c_low) / candle_range
+
+    direction = None
+    if entry > c_open and close_pos > 0.70:
+        direction = "LONG"
+    elif entry < c_open and close_pos < 0.30:
+        direction = "SHORT"
+    if direction is None:
+        return None
+
+    score = 65
+    score += 10 if vol_ratio > 6.0 else (5 if vol_ratio > 4.5 else 0)
+    score += 5 if body_pct > 0.75 else 0
+    if not pd.isna(rsi_now):
+        if direction == "LONG" and 45 <= rsi_now <= 65:
+            score += 5
+        elif direction == "SHORT" and 35 <= rsi_now <= 55:
+            score += 5
+
+    rsi_display = rsi_now if not pd.isna(rsi_now) else 0.0
+
+    if direction == "LONG":
+        sl, t1, t2, t3 = (entry - 1.0 * atr_now, entry + 1.5 * atr_now,
+                          entry + 2.5 * atr_now, entry + 3.5 * atr_now)
+    else:
+        sl, t1, t2, t3 = (entry + 1.0 * atr_now, entry - 1.5 * atr_now,
+                          entry - 2.5 * atr_now, entry - 3.5 * atr_now)
+
+    return _build_signal_base(
+        symbol, direction, "VOL_SPIKE", score,
+        entry, sl, t1, t2, t3,
+        rsi=rsi_display, vol_ratio=vol_ratio, body_pct=body_pct * 100, adx=0.0,
+        funding=0.0,
+        breakdown={"vol_ratio": round(vol_ratio, 2), "body_pct": round(body_pct * 100, 1)},
+        alert=f"{direction} VOL_SPIKE | vol×{vol_ratio:.1f} | body {body_pct*100:.0f}% | RSI {rsi_display:.0f}",
+    )
+
+
 # ── Per-symbol scan ───────────────────────────────────────────────────
 
 async def scan_symbol(
@@ -120,11 +366,12 @@ async def scan_symbol(
     source: ModuleType,
     mode: str = "swing",
     check_dual_tf: bool = False,
-) -> Optional[dict]:
+) -> list[dict]:
     """
-    Full pipeline for one symbol using the given data source module.
+    Run all applicable strategies for one symbol.
+    Returns a list of signal dicts (one per triggered strategy).
     source: either `binance_source` or `bingx_source` module
-    mode:   "swing" → 4H | "intraday" → 1H
+    mode:   "swing" → 4H | "scalp" → 5m | "intraday" → 1H
     """
     if mode == "swing":
         interval = "4h"
@@ -132,26 +379,47 @@ async def scan_symbol(
         interval = SCALP_INTERVAL
     else:
         interval = "1h"
-    weekly_interval = "1w"
 
-    # Concurrent fetch
     main_raw, weekly_raw, funding, change_24h = await asyncio.gather(
         source.fetch_klines(session, symbol, interval, CANDLES_MAIN),
-        source.fetch_klines(session, symbol, weekly_interval, CANDLES_WEEKLY),
+        source.fetch_klines(session, symbol, "1w", CANDLES_WEEKLY),
         source.fetch_funding(session, symbol),
         source.fetch_ticker_24h(session, symbol),
     )
 
-    if not main_raw or len(main_raw) < 210:
-        log.debug("%s: insufficient main klines (%s)", symbol, len(main_raw) if main_raw else 0)
-        return None
-    if not weekly_raw or len(weekly_raw) < 22:
-        log.debug("%s: insufficient weekly klines (%s)", symbol, len(weekly_raw) if weekly_raw else 0)
-        return None
+    if not main_raw or len(main_raw) < 50:
+        return []
 
     df  = _klines_to_df(main_raw)
-    wdf = _klines_to_df(weekly_raw)
+    wdf = _klines_to_df(weekly_raw) if weekly_raw and len(weekly_raw) >= 22 else None
 
+    signals: list[dict] = []
+
+    # ── Strategy 1: MA Cluster Breakout (original — needs 210 candles + weekly) ──
+    if len(main_raw) >= 210 and wdf is not None:
+        sig = _try_ma_breakout(symbol, df, wdf, funding, change_24h, mode)
+        if sig:
+            signals.append(sig)
+
+    # ── Strategies 2-4: scalp-only, need only 50 candles ──────────────
+    if mode == "scalp" and len(df) >= 50:
+        for fn in (_try_rsi_bounce, _try_ema_cross, _try_vol_spike):
+            try:
+                sig = fn(symbol, df, funding) if fn is _try_rsi_bounce else fn(symbol, df)
+                if sig:
+                    signals.append(sig)
+            except Exception as e:
+                log.debug("%s %s error: %s", symbol, fn.__name__, e)
+
+    return signals
+
+
+def _try_ma_breakout(
+    symbol: str, df: pd.DataFrame, wdf: pd.DataFrame,
+    funding: float, change_24h: float,
+    mode: str,
+) -> Optional[dict]:
+    """Original MA cluster breakout logic (sync, called from scan_symbol)."""
     close  = df["close"]
     high   = df["high"]
     low    = df["low"]
@@ -166,8 +434,8 @@ async def scan_symbol(
     if not pd.isna(weekly_ma20.iloc[-1]) and not pd.isna(weekly_ma20.iloc[-4]):
         weekly_slope = (weekly_ma20.iloc[-1] - weekly_ma20.iloc[-4]) / weekly_ma20.iloc[-4]
 
-    c_last  = close.iloc[-1]
-    c_prev  = close.iloc[-2]
+    c_last    = close.iloc[-1]
+    c_prev    = close.iloc[-2]
     m200_last = ma200.iloc[-1]
     m200_prev = ma200.iloc[-2]
 
@@ -175,20 +443,7 @@ async def scan_symbol(
     tier_short = _determine_tier_short(c_last, m200_last, m200_prev, c_prev) if mode == "scalp" else None
 
     if tier_long in (None, "SKIP") and tier_short in (None, "SKIP"):
-        log.debug("%s: tier=%s/%s, skipped", symbol, tier_long, tier_short)
         return None
-
-    # 4H-loading annotation for intraday mode
-    dual_tf = False
-    if mode == "intraday" and check_dual_tf:
-        h4_raw = await source.fetch_klines(session, symbol, "4h", 60)
-        if h4_raw and len(h4_raw) >= 60:
-            h4df    = _klines_to_df(h4_raw)
-            h4c     = h4df["close"]
-            h4_ma15 = calc_sma(h4c, 15).iloc[-2]
-            h4_ma60 = calc_sma(h4c, 60).iloc[-2]
-            if not pd.isna(h4_ma15) and not pd.isna(h4_ma60):
-                dual_tf = abs(h4_ma15 - h4_ma60) / h4c.iloc[-2] < 0.025
 
     indicator_data = {
         "close": close, "high": high, "low": low, "open_": open_, "volume": volume,
@@ -197,7 +452,7 @@ async def scan_symbol(
         "weekly_slope": weekly_slope,
         "funding_rate": funding,
         "change_24h":   change_24h,
-        "dual_timeframe": dual_tf,
+        "dual_timeframe": False,
     }
 
     direction = "LONG"
@@ -255,6 +510,7 @@ async def scan_symbol(
         "symbol":         symbol,
         "direction":      direction,
         "tier":           tier,
+        "strategy":       "MA_BREAKOUT",
         "score":          score,
         "breakdown":      breakdown,
         "ma_spread_pct":  round(spread_pct * 100, 3),
@@ -266,7 +522,7 @@ async def scan_symbol(
         "funding":        round(funding * 100, 4),
         "change_24h":     round(change_24h, 2),
         "weekly":         weekly_status,
-        "dual_tf_status": "4H LOADING" if dual_tf else "",
+        "dual_tf_status": "",
         "entry":          round(exits.entry, 8),
         "stop_loss":      round(exits.stop_loss, 8),
         "target_1":       round(exits.target_1, 8),
@@ -276,9 +532,8 @@ async def scan_symbol(
         "risk_reward":    exits.risk_reward,
         "fib_support":    round(fib.fib_0618, 8),
         "alert": (
-            f"{direction} TIER {tier} | RSI {rsi_s.iloc[-1]:.0f} | "
-            f"ADX {adx_s.iloc[-1]:.0f} | "
-            f"R:R {exits.risk_reward:.1f} | "
+            f"{direction} MA_BREAKOUT TIER {tier} | RSI {rsi_s.iloc[-1]:.0f} | "
+            f"ADX {adx_s.iloc[-1]:.0f} | R:R {exits.risk_reward:.1f} | "
             f"Target {abs(exits.primary_target - exits.entry) / exits.entry * 100:.1f}%"
         ),
     }
@@ -314,8 +569,8 @@ async def run_scan(mode: str = "swing", exchange: str = "binance") -> tuple[list
             for sym, res in zip(batch, results):
                 if isinstance(res, Exception):
                     log.debug("%s error: %s", sym, res)
-                elif res is not None:
-                    signals.append(res)
+                elif res:
+                    signals.extend(res)
             if i + BATCH_SIZE < len(symbols):
                 await asyncio.sleep(BATCH_DELAY)
 

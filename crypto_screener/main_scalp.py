@@ -43,9 +43,10 @@ STATE_FILE = Path(__file__).parent / "scalp_state.json"
 TRADE_CSV     = Path(__file__).parent / "trade_history_scalp.csv"
 SIGNALS_JSONL = Path(__file__).parent / "signals_history_scalp.jsonl"
 EQUITY_JSONL  = Path(__file__).parent / "equity_history_scalp.jsonl"
+TRADES_JSONL  = Path(__file__).parent / "trades_scalp.jsonl"
 
 TRADE_CSV_FIELDS = [
-    "symbol", "direction", "tier", "score", "entry", "exit",
+    "symbol", "strategy", "direction", "tier", "score", "entry", "exit",
     "stop_loss", "target_1", "target_2", "contracts", "pnl",
     "reason", "full_close", "open_time", "close_time",
 ]
@@ -85,6 +86,20 @@ def append_signals_jsonl(signals: list[dict], total_scanned: int) -> None:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
 
+def append_trades_jsonl(events: list[dict], account: PaperAccount) -> None:
+    """Append each exit event to an immutable JSONL log for permanent record."""
+    ts = datetime.now(TW_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    stats = account.get_stats()
+    with open(TRADES_JSONL, "a", encoding="utf-8") as f:
+        for ev in events:
+            rec = {
+                "time":    ts,
+                "balance": stats["current_balance"],
+                **ev,
+            }
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+
 def append_equity_snapshot(account: PaperAccount) -> None:
     """Append a balance snapshot so an equity curve can be plotted later."""
     ts    = datetime.now(TW_TZ).strftime("%Y-%m-%d %H:%M:%S")
@@ -107,16 +122,19 @@ async def position_loop(account: PaperAccount, session: aiohttp.ClientSession) -
             open_syms = list(account.positions.keys())
             if open_syms:
                 changed = False
+                all_events: list[dict] = []
                 for sym in open_syms:
                     price = await source.fetch_price(session, sym)
                     if price is None:
                         continue
                     for ev in account.update_price(sym, price, price):
                         changed = True
+                        all_events.append(ev)
                         print(f"  [SCALP EXIT] {sym:14s} {ev['reason']:4s}  PnL: ${ev['pnl']:>+.2f}")
                 if changed:
                     account.save(PAPER_FILE)
                     export_trades_csv(account)
+                    append_trades_jsonl(all_events, account)
                     append_equity_snapshot(account)
         except Exception as e:
             log.warning("position_loop error: %s", e)
@@ -132,10 +150,15 @@ async def scan_loop(account: PaperAccount, cooldown: dict[str, float]) -> None:
             now_str = datetime.now(TW_TZ).strftime("%Y-%m-%d %H:%M:%S TWN")
             print(f"\n=== SCALP SCAN | {SCALP_INTERVAL} | {now_str} ===")
 
+            now_ts = time.time()
+            expired = [s for s, t in cooldown.items() if now_ts - t >= SCALP_COOLDOWN_SECS]
+            for s in expired:
+                del cooldown[s]
+
             signals, total = await run_scan("scalp", "bingx")
             print(f"Scanned: {total} | Signals: {len(signals)}")
 
-            now_ts = time.time()
+            now_ts = time.time()  # refresh after scan completes
             opened = 0
             for sig in signals:
                 sym = sig["symbol"]
@@ -146,8 +169,9 @@ async def scan_loop(account: PaperAccount, cooldown: dict[str, float]) -> None:
                 if account.open_position(sig):
                     cooldown[sym] = now_ts
                     opened += 1
+                    strategy = sig.get("strategy", "MA_BREAKOUT")
                     print(
-                        f"  [SCALP OPEN] {sym:14s} Tier {sig['tier']}  Score {sig['score']}  "
+                        f"  [SCALP OPEN] {sym:14s} {strategy:12s}  Score {sig['score']}  "
                         f"entry={sig['entry']:.6g}  SL={sig['stop_loss']:.6g}  TP1={sig['target_1']:.6g}"
                     )
 
@@ -169,8 +193,9 @@ async def scan_loop(account: PaperAccount, cooldown: dict[str, float]) -> None:
 
 
 async def main_async() -> None:
-    account = PaperAccount.load(PAPER_FILE)
-    if not PAPER_FILE.exists():
+    if PAPER_FILE.exists():
+        account = PaperAccount.load(PAPER_FILE)
+    else:
         account = PaperAccount(SCALP_PAPER_INITIAL_BALANCE, SCALP_PAPER_RISK_PCT)
 
     cooldown: dict[str, float] = {}

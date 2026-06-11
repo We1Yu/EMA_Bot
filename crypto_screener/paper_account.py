@@ -29,8 +29,11 @@ class Position:
     open_time:   float    # unix timestamp
     score:       int
     tier:        str
-    tp1_hit:     bool = False
-    tp2_hit:     bool = False
+    strategy:     str   = "MA_BREAKOUT"
+    entry_logic:  str   = ""
+    realized_pnl: float = 0.0   # cumulative PnL from partial exits (TP1/TP2)
+    tp1_hit:      bool  = False
+    tp2_hit:      bool  = False
 
 
 class PaperAccount:
@@ -72,6 +75,8 @@ class PaperAccount:
             open_time   = time.time(),
             score       = signal["score"],
             tier        = signal["tier"],
+            strategy    = signal.get("strategy", "MA_BREAKOUT"),
+            entry_logic = signal.get("alert", ""),
         )
         self.positions[sym] = pos
         return True
@@ -95,8 +100,9 @@ class PaperAccount:
                 self.balance += pnl
                 self.history.append(self._record(pos, pos.target_1, "TP1", pnl, 0.3))
                 if symbol in self.positions:
-                    self.positions[symbol].tp1_hit  = True
-                    self.positions[symbol].stop_loss = pos.entry_price   # trail to entry
+                    self.positions[symbol].tp1_hit    = True
+                    self.positions[symbol].stop_loss  = pos.entry_price
+                    self.positions[symbol].realized_pnl += pnl
                 events.append({"symbol": symbol, "reason": "TP1", "pnl": round(pnl, 4)})
             # TP2 — exit 40%, move stop to target_1
             elif pos.tp1_hit and not pos.tp2_hit and high >= pos.target_2:
@@ -104,8 +110,9 @@ class PaperAccount:
                 self.balance += pnl
                 self.history.append(self._record(pos, pos.target_2, "TP2", pnl, 0.4))
                 if symbol in self.positions:
-                    self.positions[symbol].tp2_hit  = True
-                    self.positions[symbol].stop_loss = pos.target_1      # trail to TP1
+                    self.positions[symbol].tp2_hit    = True
+                    self.positions[symbol].stop_loss  = pos.target_1
+                    self.positions[symbol].realized_pnl += pnl
                 events.append({"symbol": symbol, "reason": "TP2", "pnl": round(pnl, 4)})
             # TP3 — trail remaining 30%
             elif pos.tp2_hit and high >= pos.target_3:
@@ -121,8 +128,9 @@ class PaperAccount:
                 self.balance += pnl
                 self.history.append(self._record(pos, pos.target_1, "TP1", pnl, 0.3))
                 if symbol in self.positions:
-                    self.positions[symbol].tp1_hit  = True
-                    self.positions[symbol].stop_loss = pos.entry_price   # trail to entry
+                    self.positions[symbol].tp1_hit    = True
+                    self.positions[symbol].stop_loss  = pos.entry_price
+                    self.positions[symbol].realized_pnl += pnl
                 events.append({"symbol": symbol, "reason": "TP1", "pnl": round(pnl, 4)})
             # TP2 — exit 40%, move stop to target_1
             elif pos.tp1_hit and not pos.tp2_hit and low <= pos.target_2:
@@ -130,8 +138,9 @@ class PaperAccount:
                 self.balance += pnl
                 self.history.append(self._record(pos, pos.target_2, "TP2", pnl, 0.4))
                 if symbol in self.positions:
-                    self.positions[symbol].tp2_hit  = True
-                    self.positions[symbol].stop_loss = pos.target_1      # trail to TP1
+                    self.positions[symbol].tp2_hit    = True
+                    self.positions[symbol].stop_loss  = pos.target_1
+                    self.positions[symbol].realized_pnl += pnl
                 events.append({"symbol": symbol, "reason": "TP2", "pnl": round(pnl, 4)})
             # TP3 — trail remaining 30%
             elif pos.tp2_hit and low <= pos.target_3:
@@ -147,16 +156,22 @@ class PaperAccount:
         else:
             pnl = (pos.entry_price - price) * pos.contracts * frac
         self.balance += pnl
-        rec = self._record(pos, price, reason, pnl, frac, full_close=True)
+        total_trade_pnl = round(pnl + pos.realized_pnl, 4)
+        rec = self._record(pos, price, reason, pnl, frac, full_close=True,
+                           total_trade_pnl=total_trade_pnl)
         self.history.append(rec)
-        return {"symbol": symbol, "reason": reason, "pnl": round(pnl, 4)}
+        return {"symbol": symbol, "reason": reason, "pnl": round(pnl, 4),
+                "total_trade_pnl": total_trade_pnl}
 
     def _record(
         self, pos: Position, exit_price: float, reason: str,
         pnl: float, fraction: float, full_close: bool = False,
+        total_trade_pnl: float = None,
     ) -> dict:
-        return {
+        rec = {
             "symbol":      pos.symbol,
+            "strategy":    pos.strategy,
+            "entry_logic": pos.entry_logic,
             "tier":        pos.tier,
             "score":       pos.score,
             "direction":   pos.direction,
@@ -172,12 +187,19 @@ class PaperAccount:
             "open_time":   pos.open_time,
             "close_time":  time.time(),
         }
+        if total_trade_pnl is not None:
+            rec["total_trade_pnl"] = total_trade_pnl
+            rec["tp1_hit"] = pos.tp1_hit   # True = TP1 was reached at any point
+        return rec
 
     # ── Stats ─────────────────────────────────────────────────
     def get_stats(self) -> dict:
-        full   = [t for t in self.history if t.get("full_close")]
-        wins   = [t for t in full if t["pnl"] > 0]
-        losses = [t for t in full if t["pnl"] <= 0]
+        full = [t for t in self.history if t.get("full_close")]
+        # Win = TP1 was hit at any point (includes TP1→SL break-even)
+        # Loss = closed before TP1 (SL hit before reaching TP1)
+        # Old records without tp1_hit fall back to pnl > 0 to avoid falsely counting as losses
+        wins   = [t for t in full if t.get("tp1_hit", t["pnl"] > 0)]
+        losses = [t for t in full if not t.get("tp1_hit", t["pnl"] > 0)]
         total_pnl = sum(t["pnl"] for t in self.history)
 
         bal  = self.initial_balance
@@ -191,8 +213,29 @@ class PaperAccount:
             if dd > max_dd:
                 max_dd = dd
 
-        win_sum  = sum(t["pnl"] for t in wins)
-        loss_sum = sum(t["pnl"] for t in losses)
+        win_sum  = sum(t.get("total_trade_pnl", t["pnl"]) for t in wins)
+        loss_sum = sum(t.get("total_trade_pnl", t["pnl"]) for t in losses)
+        # loss_sum is negative; profit_factor needs absolute value
+
+        # Exit type counts
+        sl_count  = sum(1 for t in self.history if t.get("reason") == "SL")
+        tp1_count = sum(1 for t in self.history if t.get("reason") == "TP1")
+        tp2_count = sum(1 for t in self.history if t.get("reason") == "TP2")
+        tp3_count = sum(1 for t in self.history if t.get("reason") == "TP3")
+
+        # Per-strategy breakdown
+        strategies = {}
+        for t in self.history:
+            s = t.get("strategy", "MA_BREAKOUT")
+            if s not in strategies:
+                strategies[s] = {"trades": 0, "pnl": 0.0, "wins": 0, "losses": 0}
+            if t.get("full_close"):
+                strategies[s]["trades"] += 1
+                strategies[s]["pnl"]    = round(strategies[s]["pnl"] + t["pnl"], 4)
+                if t["pnl"] > 0:
+                    strategies[s]["wins"] += 1
+                else:
+                    strategies[s]["losses"] += 1
 
         return {
             "initial_balance":  self.initial_balance,
@@ -203,12 +246,17 @@ class PaperAccount:
             "full_closes":      len(full),
             "wins":             len(wins),
             "losses":           len(losses),
-            "win_rate":         round(len(wins) / len(full) * 100, 1) if full else 0,
+            "win_rate":         round(len(wins) / (len(wins) + len(losses)) * 100, 1) if (wins or losses) else 0,
             "avg_win":          round(win_sum  / len(wins),   2) if wins   else 0,
             "avg_loss":         round(loss_sum / len(losses), 2) if losses else 0,
             "profit_factor":    round(abs(win_sum / loss_sum), 2) if loss_sum else None,
             "max_drawdown_pct": round(max_dd, 2),
             "open_positions":   len(self.positions),
+            "sl_count":         sl_count,
+            "tp1_count":        tp1_count,
+            "tp2_count":        tp2_count,
+            "tp3_count":        tp3_count,
+            "by_strategy":      strategies,
         }
 
     def print_report(self) -> None:
@@ -259,6 +307,8 @@ class PaperAccount:
         acct.positions = {
             k: Position(**{
                 "tp1_hit": False, "tp2_hit": False,
+                "strategy": "MA_BREAKOUT", "entry_logic": "",
+                "realized_pnl": 0.0,
                 **v,
             })
             for k, v in data.get("positions", {}).items()
