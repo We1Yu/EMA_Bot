@@ -18,9 +18,10 @@ import bingx_source as source
 from paper_account import PaperAccount
 from config import SCALP_DASHBOARD_PORT
 
-TW_TZ      = timezone(timedelta(hours=8))
-PAPER_FILE = Path(__file__).parent / "paper_account_scalp.json"
-STATE_FILE = Path(__file__).parent / "scalp_state.json"
+TW_TZ         = timezone(timedelta(hours=8))
+PAPER_FILE    = Path(__file__).parent / "paper_account_scalp.json"
+STATE_FILE    = Path(__file__).parent / "scalp_state.json"
+SESSIONS_FILE = Path(__file__).parent / "sessions_log.jsonl"
 
 # ── EMA Scanner account (separate module/process) ──────────────────
 EMA_DIR          = Path(__file__).parent.parent / "ema_scanner"
@@ -142,6 +143,18 @@ def api_state():
             "close_time_str": _tw(t["close_time"]),
         })
 
+    # 讀取開關機 session 紀錄
+    sessions = []
+    if SESSIONS_FILE.exists():
+        try:
+            for line in SESSIONS_FILE.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    sessions.append(json.loads(line))
+        except Exception:
+            pass
+
+    stop_ts = state.get("stop_time")
+
     return jsonify({
         "stats":          account.get_stats(),
         "positions":      positions,
@@ -151,6 +164,8 @@ def api_state():
         "total_scanned":  state.get("total_scanned", 0),
         "last_scan":      _tw(state["updated"]) if state.get("updated") else "-",
         "start_time":     _tw(state["start_time"]) if state.get("start_time") else "-",
+        "stop_time":      _tw(stop_ts) if stop_ts else None,
+        "sessions":       sessions[-20:],
     })
 
 

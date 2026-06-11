@@ -31,10 +31,15 @@ BBW_WEAK   = 0.80
 # 200 MA skip zone
 EMA200_SKIP_PCT = 0.05  # within 5% of 200 MA => SKIP tier
 
-# ATR exit
+# ATR exit (swing / intraday)
 ATR_PERIOD          = 14
 ATR_STOP_MULT       = 1.5
 ATR_TARGET_MULTS    = [2.0, 3.0, 4.0]  # target1, target2, target3
+
+# ATR exit — scalp 專用（5m 雜訊大，用更寬的止損避免假洗出）
+# SL 2.0 ATR → T1 3.0 ATR → R:R 1.5，維持與 SCALP_MIN_RR 相同門檻
+SCALP_ATR_STOP_MULT    = 2.0
+SCALP_ATR_TARGET_MULTS = [3.0, 4.5, 6.0]
 
 # Data fetch
 CANDLES_MAIN   = 250
@@ -64,9 +69,38 @@ RSI_BOUNCE_OVERBOUGHT  = 67    # RSI threshold for overbought bounce (SHORT)
 EMA_FAST_PERIOD        = 9     # fast EMA for crossover strategy
 EMA_SLOW_PERIOD        = 21    # slow EMA for crossover strategy
 VOL_SPIKE_RATIO        = 3.5   # minimum volume multiple for spike strategy
-SCALP_PAPER_INITIAL_BALANCE = 10_000.0
+SCALP_PAPER_INITIAL_BALANCE = 1_000_000.0
 SCALP_PAPER_RISK_PCT        = 0.01      # 1% per trade (tighter risk for HF)
 SCALP_DASHBOARD_PORT        = 5000
+
+# ── BTC trend filter ──────────────────────────────────────────
+BTC_SYMBOL          = "BTC-USDT"
+BTC_MA_PERIOD       = 60    # MA60 on 5m — determines BTC bias
+BTC_ADX_PAUSE       = 50    # ADX > 50 → BTC 極端波動，暫停所有進場
+
+# ── Scalp quality gates ────────────────────────────────────────
+SCALP_MIN_SCORE       = 70     # minimum score to open a position
+SCALP_MIN_RR          = 1.5    # minimum risk:reward ratio
+SCALP_MAX_POSITIONS   = 8      # max concurrent open positions
+SCALP_MAX_ENTRY_DRIFT = 0.008  # skip if live price drifted >0.8% from signal entry
+
+# ── Time filter (台灣時間，允許開新倉的小時) ───────────────────────
+# 允許：15:00-23:00 (倫敦+紐約盤) 和 00:00-04:00 (紐約尾盤)
+# 封鎖：09:00-14:00 TWN = UTC 01-06，亞洲收盤後的低流動性死區
+SCALP_ALLOWED_HOURS_TWN: set = set(range(15, 24)) | {0, 1, 2, 3}
+
+# ── Symbol blocklist (長期虧損幣種) ────────────────────────────────
+SCALP_SYMBOL_BLOCKLIST: set = {
+    "BLUR-USDT",
+    "WAVES-USDT",
+    "IOST-USDT",
+    "ASTR-USDT",
+    "CRV-USDT",
+    "SPX-USDT",
+}
+
+# ── Periodic performance report ───────────────────────────────
+REPORT_INTERVAL_HOURS = 6   # 每 N 小時發一次 Discord 績效報告
 
 # ── Discord ────────────────────────────────────────────────────
 # 貼上你的 Webhook URL，留空則不發送

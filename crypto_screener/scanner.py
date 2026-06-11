@@ -10,6 +10,7 @@ from typing import Optional
 from config import (
     CANDLES_MAIN, CANDLES_WEEKLY, BATCH_SIZE, BATCH_DELAY,
     ATR_PERIOD, ATR_STOP_MULT, ATR_TARGET_MULTS, EMA200_SKIP_PCT,
+    SCALP_ATR_STOP_MULT, SCALP_ATR_TARGET_MULTS,
     MA_PERIODS, SCALP_INTERVAL,
     RSI_BOUNCE_OVERSOLD, RSI_BOUNCE_OVERBOUGHT,
     EMA_FAST_PERIOD, EMA_SLOW_PERIOD, VOL_SPIKE_RATIO,
@@ -183,6 +184,8 @@ def _try_rsi_bounce(symbol: str, df: pd.DataFrame, funding: float) -> Optional[d
 
     vol_avg   = volume.iloc[-6:-1].mean()
     vol_ratio = volume.iloc[-1] / vol_avg if vol_avg > 0 else 1.0
+    if vol_ratio < 1.5:  # 成交量確認：均值回歸仍需放量
+        return None
 
     score = 60
     if direction == "LONG":
@@ -237,13 +240,13 @@ def _try_ema_cross(symbol: str, df: pd.DataFrame) -> Optional[dict]:
 
     vol_avg   = volume.iloc[-6:-1].mean()
     vol_ratio = volume.iloc[-1] / vol_avg if vol_avg > 0 else 1.0
-    if vol_ratio < 1.2:
+    if vol_ratio < 1.5:  # 提高成交量門檻，低量交叉多為假訊號
         return None
 
     direction = None
-    if ef_prev <= es_prev and ef_now > es_now and 35 <= rsi_now <= 65:
+    if ef_prev <= es_prev and ef_now > es_now and 42 <= rsi_now <= 58:  # 收窄 RSI 區間
         direction = "LONG"
-    elif ef_prev >= es_prev and ef_now < es_now and 35 <= rsi_now <= 65:
+    elif ef_prev >= es_prev and ef_now < es_now and 42 <= rsi_now <= 58:
         direction = "SHORT"
     if direction is None:
         return None
@@ -342,11 +345,11 @@ def _try_vol_spike(symbol: str, df: pd.DataFrame) -> Optional[dict]:
     rsi_display = rsi_now if not pd.isna(rsi_now) else 0.0
 
     if direction == "LONG":
-        sl, t1, t2, t3 = (entry - 1.0 * atr_now, entry + 1.5 * atr_now,
-                          entry + 2.5 * atr_now, entry + 3.5 * atr_now)
+        sl, t1, t2, t3 = (entry - 1.5 * atr_now, entry + 2.0 * atr_now,
+                          entry + 3.0 * atr_now, entry + 4.0 * atr_now)
     else:
-        sl, t1, t2, t3 = (entry + 1.0 * atr_now, entry - 1.5 * atr_now,
-                          entry - 2.5 * atr_now, entry - 3.5 * atr_now)
+        sl, t1, t2, t3 = (entry + 1.5 * atr_now, entry - 2.0 * atr_now,
+                          entry - 3.0 * atr_now, entry - 4.0 * atr_now)
 
     return _build_signal_base(
         symbol, direction, "VOL_SPIKE", score,
@@ -481,10 +484,25 @@ def _try_ma_breakout(
     else:
         score, breakdown = compute_score_short(indicator_data)
 
+    # ── 多重指標確認：5 個子指標至少 3 個有效 ────────────────────
+    indicator_checks = [
+        breakdown.get("rsi_zone", 0) > 0,
+        breakdown.get("bbw_compression", 0) > 0,
+        breakdown.get("adx_strength", 0) > 0,
+        breakdown.get("volume_surge", 0) > 5,
+        breakdown.get("body_quality", 0) > 5,
+    ]
+    if sum(indicator_checks) < 3:
+        log.debug("%s: multi-indicator check failed (%d/5)", symbol, sum(indicator_checks))
+        return None
+
     atr_series = calc_atr(high, low, close, ATR_PERIOD)
     atr_now    = atr_series.iloc[-1]
     fib        = calc_fib_levels(close, direction)
-    exits      = calc_exit_levels(close.iloc[-1], atr_now, fib, ATR_STOP_MULT, ATR_TARGET_MULTS, direction)
+    # scalp 模式用較寬的止損，避免 5m 雜訊假洗出
+    stop_mult    = SCALP_ATR_STOP_MULT    if mode == "scalp" else ATR_STOP_MULT
+    target_mults = SCALP_ATR_TARGET_MULTS if mode == "scalp" else ATR_TARGET_MULTS
+    exits        = calc_exit_levels(close.iloc[-1], atr_now, fib, stop_mult, target_mults, direction)
 
     rsi_s       = calc_rsi(close, 14)
     adx_s, _, _ = calc_adx(high, low, close, 14)

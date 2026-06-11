@@ -65,7 +65,10 @@ def build_embed(signal: dict) -> dict:
     }
 
 
-def build_daily_report_embed(stats: dict, history_today: list[dict], exchange: str) -> dict:
+def build_daily_report_embed(
+    stats: dict, history_today: list[dict], exchange: str,
+    start_time_str: str = "-", stop_time_str: str = "-", duration_str: str = "-",
+) -> dict:
     """Build a daily summary embed from paper account stats."""
     now  = datetime.now(TW_TZ)
     date = now.strftime("%Y/%m/%d")
@@ -94,6 +97,9 @@ def build_daily_report_embed(stats: dict, history_today: list[dict], exchange: s
         {"name": "📅 日期",           "value": date,                                                           "inline": True},
         {"name": "🏦 交易所",         "value": exchange.upper(),                                               "inline": True},
         {"name": "💰 帳戶餘額",       "value": f"${stats['current_balance']:,.2f}",                            "inline": True},
+        {"name": "🟢 開機時間",       "value": start_time_str,                                                 "inline": True},
+        {"name": "🔴 關機時間",       "value": stop_time_str,                                                  "inline": True},
+        {"name": "⏱️ 執行時長",      "value": duration_str,                                                   "inline": True},
         {"name": "📊 總報酬",         "value": f"{stats['return_pct']:+.2f}%  (${stats['total_pnl']:+,.2f})",  "inline": True},
         {"name": "📉 最大回撤",       "value": f"{stats['max_drawdown_pct']:.2f}%",                            "inline": True},
         {"name": "⚖️ 獲利因子",      "value": f"{pf:.2f}" if pf else "N/A",                                   "inline": True},
@@ -146,13 +152,19 @@ def build_daily_report_embed(stats: dict, history_today: list[dict], exchange: s
 
 
 async def send_daily_report(
-    stats: dict, history_today: list[dict], exchange: str, webhook_url: str
+    stats: dict, history_today: list[dict], exchange: str, webhook_url: str,
+    start_time_str: str = "-", stop_time_str: str = "-", duration_str: str = "-",
 ) -> None:
     """Send the daily report embed to Discord."""
     if not webhook_url:
         log.warning("DISCORD_WEBHOOK_URL not set — skipping daily report")
         return
-    embed = build_daily_report_embed(stats, history_today, exchange)
+    embed = build_daily_report_embed(
+        stats, history_today, exchange,
+        start_time_str=start_time_str,
+        stop_time_str=stop_time_str,
+        duration_str=duration_str,
+    )
     async with aiohttp.ClientSession() as session:
         try:
             async with session.post(
@@ -167,6 +179,71 @@ async def send_daily_report(
                     log.info("Daily report sent to Discord")
         except Exception as e:
             log.warning("Daily report send error: %s", e)
+
+
+async def send_start_notification(
+    initial_balance: float, webhook_url: str
+) -> None:
+    """Send a bot-started embed to Discord."""
+    if not webhook_url:
+        return
+    now = datetime.now(TW_TZ).strftime("%Y/%m/%d %H:%M:%S TWN")
+    embed = {
+        "title":  "🟢 高頻 Scalp Bot 已啟動",
+        "color":  0x00C851,
+        "fields": [
+            {"name": "啟動時間", "value": now,                              "inline": True},
+            {"name": "初始資金", "value": f"${initial_balance:,.0f}",       "inline": True},
+            {"name": "交易所",   "value": "BingX USDT-M Perpetuals",        "inline": True},
+        ],
+        "footer": {"text": "BingX 高頻虛擬交易機器人"},
+    }
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(
+                webhook_url,
+                json={"embeds": [embed]},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status not in (200, 204):
+                    log.warning("Start notification Discord %d", resp.status)
+        except Exception as e:
+            log.warning("Start notification send error: %s", e)
+
+
+async def send_stop_notification(
+    stop_time_str: str, start_time_str: str, duration_str: str,
+    stats: dict, webhook_url: str
+) -> None:
+    """Send a bot-stopped embed to Discord."""
+    if not webhook_url:
+        return
+    pnl   = stats.get("total_pnl", 0)
+    color = 0xFF4444 if pnl < 0 else 0x00C851
+    embed = {
+        "title":  "🔴 高頻 Scalp Bot 已關閉",
+        "color":  color,
+        "fields": [
+            {"name": "關閉時間",   "value": stop_time_str,                  "inline": True},
+            {"name": "啟動時間",   "value": start_time_str,                 "inline": True},
+            {"name": "執行時長",   "value": duration_str,                   "inline": True},
+            {"name": "本次損益",   "value": f"${pnl:+,.2f}",               "inline": True},
+            {"name": "餘額",       "value": f"${stats.get('current_balance',0):,.2f}", "inline": True},
+            {"name": "勝率",       "value": f"{stats.get('win_rate',0):.1f}%",         "inline": True},
+        ],
+        "footer": {"text": "BingX 高頻虛擬交易機器人"},
+    }
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(
+                webhook_url,
+                json={"embeds": [embed]},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status not in (200, 204):
+                    log.warning("Stop notification Discord %d", resp.status)
+        except Exception as e:
+            log.warning("Stop notification send error: %s", e)
 
 
 async def send_discord_embeds(signals: list[dict], webhook_url: str) -> None:

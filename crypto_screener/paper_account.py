@@ -161,7 +161,8 @@ class PaperAccount:
                            total_trade_pnl=total_trade_pnl)
         self.history.append(rec)
         return {"symbol": symbol, "reason": reason, "pnl": round(pnl, 4),
-                "total_trade_pnl": total_trade_pnl}
+                "total_trade_pnl": total_trade_pnl,
+                "strategy": pos.strategy, "score": pos.score}
 
     def _record(
         self, pos: Position, exit_price: float, reason: str,
