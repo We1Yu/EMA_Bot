@@ -150,6 +150,7 @@ def api_state():
         "interval":       state.get("interval", "-"),
         "total_scanned":  state.get("total_scanned", 0),
         "last_scan":      _tw(state["updated"]) if state.get("updated") else "-",
+        "start_time":     _tw(state["start_time"]) if state.get("start_time") else "-",
     })
 
 

@@ -751,7 +751,7 @@
         const s = data.stats;
 
         document.getElementById("meta").textContent =
-          `K線週期: ${data.interval} | 上次掃描: ${data.last_scan} | 掃描幣種數: ${data.total_scanned}`;
+          `啟動時間: ${data.start_time} | K線週期: ${data.interval} | 上次掃描: ${data.last_scan} | 掃描幣種數: ${data.total_scanned}`;
 
         const cards = [
           ["帳戶餘額", `$${fmt(s.current_balance, 2)}`, ""],

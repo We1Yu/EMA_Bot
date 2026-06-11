@@ -42,6 +42,8 @@ TW_TZ      = timezone(timedelta(hours=8))
 PAPER_FILE = Path(__file__).parent / "paper_account_scalp.json"
 STATE_FILE = Path(__file__).parent / "scalp_state.json"
 
+BOT_START_TIME: float = 0.0
+
 TRADE_CSV     = Path(__file__).parent / "trade_history_scalp.csv"
 SIGNALS_JSONL = Path(__file__).parent / "signals_history_scalp.jsonl"
 EQUITY_JSONL  = Path(__file__).parent / "equity_history_scalp.jsonl"
@@ -59,6 +61,7 @@ log = logging.getLogger(__name__)
 def save_state(account: PaperAccount, signals: list[dict], total_scanned: int) -> None:
     state = {
         "updated":       time.time(),
+        "start_time":    BOT_START_TIME,
         "interval":      SCALP_INTERVAL,
         "total_scanned": total_scanned,
         "stats":         account.get_stats(),
@@ -194,8 +197,34 @@ async def scan_loop(account: PaperAccount, cooldown: dict[str, float]) -> None:
         await asyncio.sleep(SCALP_SCAN_INTERVAL_SECS)
 
 
+async def _close_all_positions(account: PaperAccount) -> None:
+    """Fetch current prices and force-close every open position at market on shutdown."""
+    if not account.positions:
+        return
+    print(f"\n[SHUTDOWN] 強制平倉 {len(account.positions)} 個持倉...")
+    all_events: list[dict] = []
+    async with aiohttp.ClientSession() as session:
+        for sym in list(account.positions.keys()):
+            try:
+                price = await source.fetch_price(session, sym)
+                if price is None:
+                    log.warning("Cannot fetch price for %s — skipping forced close", sym)
+                    continue
+                ev = account._close(sym, price, "SHUTDOWN")
+                all_events.append(ev)
+                print(f"  [SHUTDOWN CLOSE] {sym:14s}  PnL: ${ev['pnl']:>+.2f}")
+            except Exception as e:
+                log.warning("Forced close failed for %s: %s", sym, e)
+    if all_events:
+        account.save(PAPER_FILE)
+        export_trades_csv(account)
+        append_trades_jsonl(all_events, account)
+        append_equity_snapshot(account)
+
+
 async def _send_shutdown_report(account: PaperAccount) -> None:
-    """Send today's trading summary to Discord on shutdown."""
+    """Close all positions then send today's trading summary to Discord."""
+    await _close_all_positions(account)
     if not SCALP_DISCORD_WEBHOOK:
         return
     try:
@@ -211,6 +240,9 @@ async def _send_shutdown_report(account: PaperAccount) -> None:
 
 
 async def main_async() -> None:
+    global BOT_START_TIME
+    BOT_START_TIME = time.time()
+
     if PAPER_FILE.exists():
         account = PaperAccount.load(PAPER_FILE)
     else:
