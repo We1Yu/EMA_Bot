@@ -19,6 +19,7 @@ Usage:
 """
 
 import asyncio
+import csv
 import json
 import logging
 import time
@@ -39,6 +40,16 @@ TW_TZ      = timezone(timedelta(hours=8))
 PAPER_FILE = Path(__file__).parent / "paper_account_scalp.json"
 STATE_FILE = Path(__file__).parent / "scalp_state.json"
 
+TRADE_CSV     = Path(__file__).parent / "trade_history_scalp.csv"
+SIGNALS_JSONL = Path(__file__).parent / "signals_history_scalp.jsonl"
+EQUITY_JSONL  = Path(__file__).parent / "equity_history_scalp.jsonl"
+
+TRADE_CSV_FIELDS = [
+    "symbol", "direction", "tier", "score", "entry", "exit",
+    "stop_loss", "target_1", "target_2", "contracts", "pnl",
+    "reason", "full_close", "open_time", "close_time",
+]
+
 log = logging.getLogger(__name__)
 
 
@@ -51,6 +62,41 @@ def save_state(account: PaperAccount, signals: list[dict], total_scanned: int) -
         "signals":       signals[:20],
     }
     STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def export_trades_csv(account: PaperAccount) -> None:
+    """Rewrite the full closed-trade history as CSV for analysis."""
+    with open(TRADE_CSV, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=TRADE_CSV_FIELDS, extrasaction="ignore")
+        writer.writeheader()
+        for t in account.history:
+            row = dict(t)
+            row["open_time"]  = datetime.fromtimestamp(t["open_time"],  tz=TW_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            row["close_time"] = datetime.fromtimestamp(t["close_time"], tz=TW_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            writer.writerow(row)
+
+
+def append_signals_jsonl(signals: list[dict], total_scanned: int) -> None:
+    """Append every signal from this scan (not just the top 20) for later analysis."""
+    ts = datetime.now(TW_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    with open(SIGNALS_JSONL, "a", encoding="utf-8") as f:
+        for sg in signals:
+            rec = {"time": ts, "total_scanned": total_scanned, **sg}
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+
+def append_equity_snapshot(account: PaperAccount) -> None:
+    """Append a balance snapshot so an equity curve can be plotted later."""
+    ts    = datetime.now(TW_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    stats = account.get_stats()
+    rec = {
+        "time":            ts,
+        "balance":         stats["current_balance"],
+        "total_pnl":       stats["total_pnl"],
+        "open_positions":  stats["open_positions"],
+    }
+    with open(EQUITY_JSONL, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
 
 # ── Loop 1: fast position checks ─────────────────────────────
@@ -70,6 +116,8 @@ async def position_loop(account: PaperAccount, session: aiohttp.ClientSession) -
                         print(f"  [SCALP EXIT] {sym:14s} {ev['reason']:4s}  PnL: ${ev['pnl']:>+.2f}")
                 if changed:
                     account.save(PAPER_FILE)
+                    export_trades_csv(account)
+                    append_equity_snapshot(account)
         except Exception as e:
             log.warning("position_loop error: %s", e)
 
@@ -105,6 +153,9 @@ async def scan_loop(account: PaperAccount, cooldown: dict[str, float]) -> None:
 
             account.save(PAPER_FILE)
             save_state(account, signals, total)
+            export_trades_csv(account)
+            append_signals_jsonl(signals, total)
+            append_equity_snapshot(account)
 
             stats = account.get_stats()
             print(

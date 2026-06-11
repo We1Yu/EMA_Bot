@@ -5,7 +5,13 @@ ema_scanner/paper_account.json
 crypto_screener/paper_account.json
 crypto_screener/paper_account_scalp.json
 crypto_screener/scalp_state.json
+crypto_screener/trade_history_scalp.csv
+crypto_screener/signals_history_scalp.jsonl
+crypto_screener/equity_history_scalp.jsonl
 ema_scanner/signals_log.json
+ema_scanner/signals_history.jsonl
+ema_scanner/trade_history.csv
+ema_scanner/equity_history.jsonl
 ema_scanner/*.log
 *.log
 logs/

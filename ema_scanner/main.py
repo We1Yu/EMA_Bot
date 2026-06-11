@@ -5,6 +5,7 @@
 - 同一幣種 4 小時內不重複推播
 """
 
+import csv
 import json
 import os
 import time
@@ -21,11 +22,20 @@ from indicators   import ema_snapshot
 # ── 常數設定 ──────────────────────────────────────────────
 STATE_FILE      = Path(__file__).parent / "state.json"
 SIGNALS_LOG     = Path(__file__).parent / "signals_log.json"
+SIGNALS_JSONL   = Path(__file__).parent / "signals_history.jsonl"
+TRADE_CSV       = Path(__file__).parent / "trade_history.csv"
+EQUITY_JSONL    = Path(__file__).parent / "equity_history.jsonl"
 SCAN_INTERVAL   = 60 * 60          # 60 分鐘（秒）
 DEDUP_WINDOW    = 4 * 60 * 60      # 4 小時去重窗口（秒）
 KLINES_4H_LIMIT = 250   # EMA200 需要足夠歷史資料（至少 200 根）
 KLINES_1H_LIMIT = 100   # EMA60 需要 60 根，RSI/MACD 需要 35+ 根
 TW_TZ           = timezone(timedelta(hours=8))
+
+TRADE_CSV_FIELDS = [
+    "symbol", "direction", "score", "entry", "exit",
+    "stop_loss", "target1", "target2", "contracts", "pnl",
+    "reason", "full_close", "open_time", "close_time",
+]
 
 
 # ── 去重狀態管理 ──────────────────────────────────────────
@@ -57,26 +67,58 @@ def mark_alerted(state: dict, symbol: str) -> None:
 
 
 def log_signal(result: dict, score: float) -> None:
-    """將達標訊號寫入 signals_log.json 供網頁儀表板讀取"""
+    """將達標訊號寫入 signals_log.json 供網頁儀表板讀取，並完整附加到 signals_history.jsonl"""
+    entry = {
+        "symbol":    result["symbol"],
+        "direction": result["direction"],
+        "strategy":  result.get("strategy", "EMA_CONVERGENCE"),
+        "score":     score,
+        "entry":     result["levels"]["entry"],
+        "stop_loss": result["levels"]["stop_loss"],
+        "target1":   result["levels"]["target1"],
+        "target2":   result["levels"]["target2"],
+        "bandwidth": result["convergence"]["bandwidth"],
+        "time":      datetime.now(TW_TZ).strftime("%Y/%m/%d %H:%M"),
+    }
     try:
         existing: list = json.loads(SIGNALS_LOG.read_text(encoding="utf-8")) if SIGNALS_LOG.exists() else []
-        existing.append({
-            "symbol":    result["symbol"],
-            "direction": result["direction"],
-            "strategy":  result.get("strategy", "EMA_CONVERGENCE"),
-            "score":     score,
-            "entry":     result["levels"]["entry"],
-            "stop_loss": result["levels"]["stop_loss"],
-            "target1":   result["levels"]["target1"],
-            "target2":   result["levels"]["target2"],
-            "bandwidth": result["convergence"]["bandwidth"],
-            "time":      datetime.now(TW_TZ).strftime("%Y/%m/%d %H:%M"),
-        })
+        existing.append(entry)
         SIGNALS_LOG.write_text(
             json.dumps(existing[-300:], ensure_ascii=False, indent=2), encoding="utf-8"
         )
     except Exception:
         pass
+
+    try:
+        with open(SIGNALS_JSONL, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def export_trades_csv(trader: PaperTrader) -> None:
+    """將完整成交紀錄重寫成 CSV 供分析使用"""
+    with open(TRADE_CSV, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=TRADE_CSV_FIELDS, extrasaction="ignore")
+        writer.writeheader()
+        for t in trader.trade_history:
+            row = dict(t)
+            row["open_time"]  = datetime.fromtimestamp(t["open_ms"]  / 1000, tz=TW_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            row["close_time"] = datetime.fromtimestamp(t["close_ms"] / 1000, tz=TW_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            writer.writerow(row)
+
+
+def append_equity_snapshot(trader: PaperTrader) -> None:
+    """附加帳戶權益快照，供之後繪製資產曲線"""
+    stats = trader.get_stats()
+    rec = {
+        "time":           datetime.now(TW_TZ).strftime("%Y-%m-%d %H:%M:%S"),
+        "balance":        stats["current_balance"],
+        "total_pnl":      stats.get("total_pnl", 0.0),
+        "open_positions": stats.get("open_positions", len(trader.positions)),
+    }
+    with open(EQUITY_JSONL, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
 
 def prune_state(state: dict) -> dict:
@@ -235,6 +277,8 @@ def run_scan() -> None:
             _print_open_detail(result, score)
 
     trader.save()
+    export_trades_csv(trader)
+    append_equity_snapshot(trader)
     trader.print_report()
 
     # 發送通知
