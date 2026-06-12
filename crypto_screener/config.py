@@ -100,6 +100,13 @@ SCALP_SYMBOL_BLOCKLIST: set = {
     "SPX-USDT",
 }
 
+# ── HF 市場微結構指標 ──────────────────────────────────────────
+OI_HISTORY_WINDOW  = 20     # 滾動 OI 樣本數（~100 分鐘基線）
+OI_SPIKE_THRESHOLD = 0.10   # OI 變化 ≥10% vs 滾動均值 = 異常建倉訊號
+FLOW_STRONG        = 0.30   # |flow_ratio| ≥30% = 強方向性壓力
+FLOW_MED           = 0.15   # |flow_ratio| ≥15% = 中等壓力
+FUNDING_EXTREME    = 0.20   # 資費 >0.20% → 硬封鎖 LONG 進場（擁擠多頭）
+
 # ── Periodic performance report ───────────────────────────────
 REPORT_INTERVAL_HOURS = 6   # 每 N 小時發一次 Discord 績效報告
 

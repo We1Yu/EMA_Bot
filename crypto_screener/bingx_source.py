@@ -176,3 +176,69 @@ async def fetch_ticker_24h(session: aiohttp.ClientSession, symbol: str) -> float
             except (TypeError, ValueError):
                 pass
     return 0.0
+
+
+async def fetch_open_interest(session: aiohttp.ClientSession, symbol: str) -> float:
+    """Return current open interest (contract units). Returns 0.0 on failure."""
+    data = await _get(
+        session,
+        f"{BINGX_BASE}/openApi/swap/v2/quote/openInterest",
+        {"symbol": symbol},
+    )
+    if not data:
+        return 0.0
+    item = data.get("data", {})
+    if isinstance(item, dict):
+        try:
+            return float(item.get("openInterest") or 0)
+        except (TypeError, ValueError):
+            pass
+    return 0.0
+
+
+async def fetch_trade_flow(
+    session: aiohttp.ClientSession, symbol: str, limit: int = 100
+) -> dict:
+    """
+    Aggregate last `limit` trades into directional flow metrics.
+    Returns:
+      flow_ratio  : (buy_vol − sell_vol) / total_vol  ∈ [−1, +1]
+      large_trade : True if any single trade exceeds 3× average trade size
+    isBuyerMaker=True → sell-side aggressor; False → buy-side aggressor.
+    """
+    data = await _get(
+        session,
+        f"{BINGX_BASE}/openApi/swap/v2/quote/trades",
+        {"symbol": symbol, "limit": limit},
+    )
+    _empty = {"flow_ratio": 0.0, "large_trade": False}
+    if not data:
+        return _empty
+
+    trades = data.get("data", [])
+    if not isinstance(trades, list) or not trades:
+        return _empty
+
+    buy_vol = sell_vol = 0.0
+    vols: list[float] = []
+    for t in trades:
+        try:
+            qty = float(t.get("qty") or 0)
+            buyer_maker = t.get("isBuyerMaker", t.get("buyerMaker", True))
+            vols.append(qty)
+            if not buyer_maker:
+                buy_vol += qty
+            else:
+                sell_vol += qty
+        except (TypeError, ValueError):
+            continue
+
+    total = buy_vol + sell_vol
+    if total == 0 or not vols:
+        return _empty
+
+    flow_ratio  = (buy_vol - sell_vol) / total
+    avg_vol     = sum(vols) / len(vols)
+    large_trade = any(v > 3.0 * avg_vol for v in vols) if avg_vol > 0 else False
+
+    return {"flow_ratio": round(flow_ratio, 3), "large_trade": large_trade}

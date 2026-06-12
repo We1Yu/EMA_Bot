@@ -3,6 +3,7 @@
 import logging
 import asyncio
 import time
+from collections import defaultdict, deque
 import aiohttp
 import pandas as pd
 from types import ModuleType
@@ -15,6 +16,7 @@ from config import (
     MA_PERIODS, SCALP_INTERVAL,
     RSI_BOUNCE_OVERSOLD, RSI_BOUNCE_OVERBOUGHT,
     EMA_FAST_PERIOD, EMA_SLOW_PERIOD, VOL_SPIKE_RATIO,
+    OI_HISTORY_WINDOW, OI_SPIKE_THRESHOLD, FLOW_STRONG, FLOW_MED,
 )
 from indicators import (
     calc_sma, calc_ema, calc_atr, calc_rsi, calc_bbw, calc_adx,
@@ -32,6 +34,23 @@ BINANCE_BASE = "https://fapi.binance.com"
 # {symbol: (timestamp, "BULLISH" | "BEARISH" | "NEUTRAL" | "UNKNOWN")}
 _4h_bias_cache: dict[str, tuple[float, str]] = {}
 _4H_CACHE_TTL = 7200  # 2 hours
+
+# ── OI rolling cache (scalp) ─────────────────────────────────────────
+# 每次掃描更新，保存最近 OI_HISTORY_WINDOW 筆樣本用於異常偵測
+_oi_cache: dict[str, deque] = defaultdict(lambda: deque(maxlen=OI_HISTORY_WINDOW))
+
+
+def _update_oi_cache(symbol: str, oi: float) -> float:
+    """Append OI sample; return % change vs rolling prior mean (0.0 if < 3 samples)."""
+    if oi <= 0:
+        return 0.0
+    cache = _oi_cache[symbol]
+    oi_change = 0.0
+    if len(cache) >= 3:
+        prior = sum(cache) / len(cache)
+        oi_change = (oi - prior) / prior if prior > 0 else 0.0
+    cache.append(oi)
+    return oi_change
 
 
 async def _fetch_4h_bias(
@@ -447,6 +466,25 @@ async def scan_symbol(
     if not main_raw or len(main_raw) < 50:
         return []
 
+    # ── 微結構資料（scalp 模式限定，避免增加 swing 模式速率壓力）────────
+    oi_raw:    float = 0.0
+    flow_data: dict  = {"flow_ratio": 0.0, "large_trade": False}
+    if mode == "scalp":
+        _f_oi   = getattr(source, "fetch_open_interest", None)
+        _f_flow = getattr(source, "fetch_trade_flow",    None)
+        if _f_oi and _f_flow:
+            oi_raw, flow_data = await asyncio.gather(
+                _f_oi(session, symbol), _f_flow(session, symbol)
+            )
+        elif _f_oi:
+            oi_raw = await _f_oi(session, symbol)
+        elif _f_flow:
+            flow_data = await _f_flow(session, symbol)
+
+    oi_change_pct = _update_oi_cache(symbol, oi_raw)
+    flow_ratio    = flow_data.get("flow_ratio",  0.0)
+    large_trade   = flow_data.get("large_trade", False)
+
     df  = _klines_to_df(main_raw)
     wdf = _klines_to_df(weekly_raw) if weekly_raw and len(weekly_raw) >= 22 else None
 
@@ -454,7 +492,8 @@ async def scan_symbol(
 
     # ── Strategy 1: MA Cluster Breakout (original — needs 210 candles + weekly) ──
     if len(main_raw) >= 210 and wdf is not None:
-        sig = _try_ma_breakout(symbol, df, wdf, funding, change_24h, mode)
+        sig = _try_ma_breakout(symbol, df, wdf, funding, change_24h, mode,
+                               oi_change_pct, flow_ratio, large_trade)
         if sig:
             signals.append(sig)
 
@@ -480,6 +519,32 @@ async def scan_symbol(
                 or (s["direction"] == "SHORT" and bias_4h == "BEARISH")
             ]
 
+    # ── 附加微結構欄位並對非 MA_BREAKOUT 策略套用後置加分 ──────────────
+    for sig in signals:
+        sig["oi_change_pct"] = round(oi_change_pct * 100, 1)
+        sig["flow_ratio"]    = round(flow_ratio * 100, 1)
+        sig["large_trade"]   = large_trade
+        # MA_BREAKOUT 的加分已在 compute_score 內部計算；其他策略在此補加
+        if sig.get("strategy") != "MA_BREAKOUT" and mode == "scalp":
+            direction   = sig.get("direction", "LONG")
+            micro_bonus = 0
+            if oi_change_pct >= OI_SPIKE_THRESHOLD:
+                micro_bonus += 8
+            elif oi_change_pct >= 0.03:
+                micro_bonus += 4
+            if direction == "LONG":
+                if   flow_ratio >= FLOW_STRONG: micro_bonus += 5
+                elif flow_ratio >= FLOW_MED:    micro_bonus += 3
+            else:
+                if   flow_ratio <= -FLOW_STRONG: micro_bonus += 5
+                elif flow_ratio <= -FLOW_MED:    micro_bonus += 3
+            if large_trade and (
+                (direction == "LONG"  and flow_ratio > 0) or
+                (direction == "SHORT" and flow_ratio < 0)
+            ):
+                micro_bonus += 5
+            sig["score"] = sig.get("score", 0) + micro_bonus
+
     return signals
 
 
@@ -487,6 +552,9 @@ def _try_ma_breakout(
     symbol: str, df: pd.DataFrame, wdf: pd.DataFrame,
     funding: float, change_24h: float,
     mode: str,
+    oi_change_pct: float = 0.0,
+    flow_ratio: float = 0.0,
+    large_trade: bool = False,
 ) -> Optional[dict]:
     """Original MA cluster breakout logic (sync, called from scan_symbol)."""
     close  = df["close"]
@@ -523,9 +591,12 @@ def _try_ma_breakout(
         "ma15": ma15, "ma30": ma30, "ma45": ma45, "ma60": ma60, "ma200": ma200,
         "weekly_close": weekly_close, "weekly_ma20": weekly_ma20,
         "weekly_slope": weekly_slope,
-        "funding_rate": funding,
-        "change_24h":   change_24h,
+        "funding_rate":   funding,
+        "change_24h":     change_24h,
         "dual_timeframe": False,
+        "oi_change_pct":  oi_change_pct,
+        "flow_ratio":     flow_ratio,
+        "large_trade":    large_trade,
     }
 
     direction = "LONG"

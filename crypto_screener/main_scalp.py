@@ -44,6 +44,7 @@ from config import (
     SCALP_MIN_SCORE, SCALP_MIN_RR, SCALP_MAX_POSITIONS,
     SCALP_MAX_ENTRY_DRIFT, SCALP_SYMBOL_BLOCKLIST,
     BTC_SYMBOL, BTC_MA_PERIOD, BTC_ADX_PAUSE,
+    FUNDING_EXTREME,
 )
 
 TW_TZ      = timezone(timedelta(hours=8))
@@ -342,7 +343,8 @@ async def scan_loop(
             now_ts = time.time()  # refresh after scan completes
             opened  = 0
             skipped = {"blacklist": 0, "score": 0, "rr": 0, "drift": 0,
-                       "max_pos": 0, "cooldown": 0, "duplicate": 0, "btc_bias": 0}
+                       "max_pos": 0, "cooldown": 0, "duplicate": 0, "btc_bias": 0,
+                       "funding": 0}
 
             # Gate 2-8 靜態過濾，收集通過的候選
             candidates = []
@@ -364,6 +366,13 @@ async def scan_loop(
                     skipped["score"] += 1
                     continue
                 direction = sig.get("direction", "LONG")
+                # 資費極端門檻：多頭擁擠時禁止 LONG，空頭擁擠時禁止 SHORT
+                if direction == "LONG"  and sig.get("funding", 0) >  FUNDING_EXTREME:
+                    skipped["funding"] += 1
+                    continue
+                if direction == "SHORT" and sig.get("funding", 0) < -FUNDING_EXTREME:
+                    skipped["funding"] += 1
+                    continue
                 if btc_bias == "BEARISH" and direction == "LONG":
                     skipped["btc_bias"] += 1
                     continue

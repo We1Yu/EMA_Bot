@@ -5,6 +5,7 @@ from indicators import calc_rsi, calc_bbw, calc_adx, calc_sma, calc_macd
 from config import (
     CLUSTER_THRESHOLD, VOL_RATIO_MIN, RSI_PERIOD, ADX_PERIOD,
     BBW_PERIOD, BBW_STD, BBW_STRONG, BBW_MED, BBW_WEAK,
+    OI_SPIKE_THRESHOLD, FLOW_STRONG, FLOW_MED,
 )
 
 
@@ -178,6 +179,32 @@ def compute_score(data: dict) -> tuple[int, dict]:
         weekly_score = 0
     breakdown["weekly_trend"] = weekly_score
 
+    # ── HF 市場微結構 (20 pts) ────────────────────────────────
+
+    # OI Momentum (10) — 上漲 + OI 增加 = 新多單入場 = 真實動能
+    oi_chg = data.get("oi_change_pct", 0.0)
+    if oi_chg >= OI_SPIKE_THRESHOLD:
+        oi_score = 10   # 顯著建倉異常
+    elif oi_chg >= 0.03:
+        oi_score = 6
+    elif oi_chg >= -0.05:
+        oi_score = 3    # OI 持平
+    else:
+        oi_score = 0    # OI 下降 = 軋空行情，動能較弱
+    breakdown["oi_momentum"] = oi_score
+
+    # Trade Flow Pressure (10) — 淨買壓確認多單
+    flow = data.get("flow_ratio", 0.0)
+    if flow >= FLOW_STRONG:
+        flow_score = 10
+    elif flow >= FLOW_MED:
+        flow_score = 6
+    elif flow >= 0:
+        flow_score = 2
+    else:
+        flow_score = 0   # 淨賣壓 — 對多單不利
+    breakdown["flow_pressure"] = flow_score
+
     # ── BONUS MODIFIERS (additive) ────────────────────────────
     bonus = 0
 
@@ -213,13 +240,19 @@ def compute_score(data: dict) -> tuple[int, dict]:
         bonus -= 5
         breakdown["penalty_high_funding"] = -5
 
+    # +5 巨鯨買單出現且與多單方向一致
+    if data.get("large_trade", False) and data.get("flow_ratio", 0.0) > 0:
+        bonus += 5
+        breakdown["bonus_whale"] = 5
+
     breakdown["bonus_total"] = bonus
 
     base  = (cluster_score + vol_score + body_score +
              rsi_score + bbw_score + close_pos_score +
              ma200_score + slope_score + adx_score +
              macd_score +
-             fund_score + mom_score + weekly_score)
+             fund_score + mom_score + weekly_score +
+             oi_score + flow_score)
     total = int(round(base + bonus))
     breakdown["base"]  = round(base, 1)
     breakdown["total"] = total
@@ -398,6 +431,32 @@ def compute_score_short(data: dict) -> tuple[int, dict]:
         weekly_score = 0
     breakdown["weekly_trend"] = weekly_score
 
+    # ── HF 市場微結構 (20 pts) ────────────────────────────────
+
+    # OI Momentum (10) — 下跌 + OI 增加 = 新空單入場 = 真實動能
+    oi_chg = data.get("oi_change_pct", 0.0)
+    if oi_chg >= OI_SPIKE_THRESHOLD:
+        oi_score = 10
+    elif oi_chg >= 0.03:
+        oi_score = 6
+    elif oi_chg >= -0.05:
+        oi_score = 3
+    else:
+        oi_score = 0    # OI 下降 = 多單平倉，空頭動能較弱
+    breakdown["oi_momentum"] = oi_score
+
+    # Trade Flow Pressure (10) — 淨賣壓確認空單
+    flow = data.get("flow_ratio", 0.0)
+    if flow <= -FLOW_STRONG:
+        flow_score = 10
+    elif flow <= -FLOW_MED:
+        flow_score = 6
+    elif flow <= 0:
+        flow_score = 2
+    else:
+        flow_score = 0   # 淨買壓 — 對空單不利
+    breakdown["flow_pressure"] = flow_score
+
     # ── BONUS MODIFIERS (additive) ────────────────────────────
     bonus = 0
 
@@ -433,13 +492,19 @@ def compute_score_short(data: dict) -> tuple[int, dict]:
         bonus -= 5
         breakdown["penalty_neg_funding"] = -5
 
+    # +5 巨鯨賣單出現且與空單方向一致
+    if data.get("large_trade", False) and data.get("flow_ratio", 0.0) < 0:
+        bonus += 5
+        breakdown["bonus_whale"] = 5
+
     breakdown["bonus_total"] = bonus
 
     base  = (cluster_score + vol_score + body_score +
              rsi_score + bbw_score + close_pos_score +
              ma200_score + slope_score + adx_score +
              macd_score +
-             fund_score + mom_score + weekly_score)
+             fund_score + mom_score + weekly_score +
+             oi_score + flow_score)
     total = int(round(base + bonus))
     breakdown["base"]  = round(base, 1)
     breakdown["total"] = total
