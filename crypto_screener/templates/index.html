@@ -615,16 +615,15 @@
     }
 
     function renderHistory(tab) {
-      if (tab === "scalp") {
-        const filtered = applyFilter(_histData.scalp, _histFilter.scalp);
-        const histBody = document.querySelector("#hist-table tbody");
-        const empty = document.getElementById("hist-empty");
-        if (filtered.length === 0) {
-          histBody.innerHTML = "";
-          empty.style.display = "block";
-        } else {
-          empty.style.display = "none";
-          histBody.innerHTML = filtered.map(t => `
+      const filtered = applyFilter(_histData.scalp, _histFilter.scalp);
+      const histBody = document.querySelector("#hist-table tbody");
+      const empty = document.getElementById("hist-empty");
+      if (filtered.length === 0) {
+        histBody.innerHTML = "";
+        empty.style.display = "block";
+      } else {
+        empty.style.display = "none";
+        histBody.innerHTML = filtered.map(t => `
         <tr>
           <td>${t.symbol}</td>
           <td><span class="tag tag-${t.direction}">${t.direction}</span></td>
@@ -636,27 +635,6 @@
           <td style="color:var(--muted);font-size:0.82em;white-space:normal;max-width:280px">${t.entry_logic || "-"}</td>
           <td>${t.close_time_str}</td>
         </tr>`).join("");
-        }
-      } else {
-        const filtered = applyFilter(_histData.ema, _histFilter.ema);
-        const histBody = document.querySelector("#ema-hist-table tbody");
-        const empty = document.getElementById("ema-hist-empty");
-        if (filtered.length === 0) {
-          histBody.innerHTML = "";
-          empty.style.display = "block";
-        } else {
-          empty.style.display = "none";
-          histBody.innerHTML = filtered.map(t => `
-        <tr>
-          <td>${t.symbol}</td>
-          <td><span class="tag tag-${t.direction}">${t.direction}</span></td>
-          <td>${t.reason === "套保" ? `<span class="tag tag-套保">套保</span>` : t.reason}</td>
-          <td>${fmt(t.entry, 6)}</td>
-          <td>${fmt(t.exit, 6)}</td>
-          <td class="${pnlClass(t.pnl)}">$${fmt(t.pnl, 2)}</td>
-          <td>${t.close_time_str}</td>
-        </tr>`).join("");
-        }
       }
     }
 
