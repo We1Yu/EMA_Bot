@@ -95,17 +95,14 @@ def build_daily_report_embed(
 
     fields = [
         {"name": "📅 日期",           "value": date,                                                           "inline": True},
-        {"name": "🏦 交易所",         "value": exchange.upper(),                                               "inline": True},
         {"name": "💰 帳戶餘額",       "value": f"${stats['current_balance']:,.2f}",                            "inline": True},
         {"name": "🟢 開機時間",       "value": start_time_str,                                                 "inline": True},
         {"name": "🔴 關機時間",       "value": stop_time_str,                                                  "inline": True},
         {"name": "⏱️ 執行時長",      "value": duration_str,                                                   "inline": True},
         {"name": "📊 總報酬",         "value": f"{stats['return_pct']:+.2f}%  (${stats['total_pnl']:+,.2f})",  "inline": True},
         {"name": "📉 最大回撤",       "value": f"{stats['max_drawdown_pct']:.2f}%",                            "inline": True},
-        {"name": "⚖️ 獲利因子",      "value": f"{pf:.2f}" if pf else "N/A",                                   "inline": True},
         {"name": "🏆 累計勝率",       "value": f"{stats['win_rate']:.1f}%  ({stats['wins']}勝 / {stats['losses']}敗)", "inline": True},
         {"name": "📋 已平倉",         "value": str(stats["full_closes"]),                                      "inline": True},
-        {"name": "🔓 持倉中",         "value": str(stats["open_positions"]),                                   "inline": True},
         {"name": "🎯 出場統計 (累計)", "value": f"SL {sl_count}  TP1 {tp1_count}  TP2 {tp2_count}  TP3 {tp3_count}", "inline": False},
         {"name": "📆 今日損益",       "value": f"${pnl_today:+,.2f}  (勝{len(wins_today)} 敗{len(losses_today)} 勝率{win_rate_today}%)", "inline": False},
     ]
@@ -123,31 +120,12 @@ def build_daily_report_embed(
             "inline": False,
         })
 
-    # Today's trade list
-    if full_today:
-        lines = []
-        for t in reversed(full_today[-10:]):
-            reason = t.get("reason", "—")
-            if reason == "SHUTDOWN":
-                icon = "🔴"
-            elif t.get("tp1_hit", t["pnl"] > 0):
-                icon = "✅"
-            else:
-                icon = "❌"
-            strat  = t.get("strategy", "—")
-            suffix = "  ⚠️ 強制平倉" if reason == "SHUTDOWN" else ""
-            lines.append(f"{icon} {t['symbol']}  `{strat}`  {reason}  ${t['pnl']:+.2f}{suffix}")
-        fields.append({
-            "name":   f"📜 今日交易明細 (最近 {min(len(full_today), 10)} 筆)",
-            "value":  "\n".join(lines) or "—",
-            "inline": False,
-        })
 
     return {
-        "title":  f"{emoji} 高頻 Scalp Bot 關閉報告 — {date}",
+        "title":  f"{emoji} 自動交易 關閉報告 — {date}",
         "color":  0x00C851 if stats["total_pnl"] >= 0 else 0xFF4444,
         "fields": fields,
-        "footer": {"text": f"BingX 高頻虛擬交易機器人 | 關閉時間 {time_str}"},
+        "footer": {"text": f"自動交易機器人 | 關閉時間 {time_str}"},
     }
 
 
@@ -189,14 +167,13 @@ async def send_start_notification(
         return
     now = datetime.now(TW_TZ).strftime("%Y/%m/%d %H:%M:%S TWN")
     embed = {
-        "title":  "🟢 高頻 Scalp Bot 已啟動",
+        "title":  "🟢 自動交易 已啟動",
         "color":  0x00C851,
         "fields": [
             {"name": "啟動時間", "value": now,                              "inline": True},
             {"name": "初始資金", "value": f"${initial_balance:,.0f}",       "inline": True},
-            {"name": "交易所",   "value": "BingX USDT-M Perpetuals",        "inline": True},
         ],
-        "footer": {"text": "BingX 高頻虛擬交易機器人"},
+        "footer": {"text": "自動交易機器人"},
     }
     async with aiohttp.ClientSession() as session:
         try:
@@ -221,7 +198,7 @@ async def send_stop_notification(
     pnl   = stats.get("total_pnl", 0)
     color = 0xFF4444 if pnl < 0 else 0x00C851
     embed = {
-        "title":  "🔴 高頻 Scalp Bot 已關閉",
+        "title":  "🔴 自動交易 已關閉",
         "color":  color,
         "fields": [
             {"name": "關閉時間",   "value": stop_time_str,                  "inline": True},
@@ -231,7 +208,7 @@ async def send_stop_notification(
             {"name": "餘額",       "value": f"${stats.get('current_balance',0):,.2f}", "inline": True},
             {"name": "勝率",       "value": f"{stats.get('win_rate',0):.1f}%",         "inline": True},
         ],
-        "footer": {"text": "BingX 高頻虛擬交易機器人"},
+        "footer": {"text": "自動交易機器人"},
     }
     async with aiohttp.ClientSession() as session:
         try:

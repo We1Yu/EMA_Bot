@@ -4,7 +4,7 @@
 MA_PERIODS = [15, 30, 45, 60, 200]
 
 # Cluster / breakout
-CLUSTER_THRESHOLD    = 0.015   # spread_pct < 1.5%
+CLUSTER_THRESHOLD    = 0.008   # spread_pct < 0.8%
 VOL_RATIO_MIN        = 1.5     # breakout volume must be 1.5x 5-bar avg
 BODY_PCT_MIN         = 0.60    # candle body must be >= 60%
 
@@ -18,7 +18,7 @@ RSI_MIN_SHORT = 25
 RSI_MAX_SHORT = 55
 
 # ADX
-ADX_MIN    = 20
+ADX_MIN    = 25
 ADX_PERIOD = 14
 
 # Bollinger Band Width
@@ -27,6 +27,7 @@ BBW_STD    = 2.0
 BBW_STRONG = 0.60
 BBW_MED    = 0.70
 BBW_WEAK   = 0.80
+BBW_MIN_WIDTH = 0.05   # hard filter: normalised BBW must be > 5% (市場夠波動才交易)
 
 # 200 MA skip zone
 EMA200_SKIP_PCT = 0.05  # within 5% of 200 MA => SKIP tier

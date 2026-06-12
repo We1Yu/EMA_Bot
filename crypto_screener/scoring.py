@@ -122,13 +122,14 @@ def compute_score(data: dict) -> tuple[int, dict]:
 
     # ── MARKET CONTEXT (25 pts) ───────────────────────────────
 
-    # Funding Rate (10)
+    # Funding Rate (10) — LONG favoured when funding is low/negative
+    # < 0.03%  (0.0003): cheap to hold long → full score
+    # 0.03-0.1% (0.001): acceptable
+    # > 0.1%           : crowded longs, penalise via bonus
     funding = data.get("funding_rate", 0.0)
-    if -0.0001 <= funding <= 0.0001:
+    if funding <= 0.0003:
         fund_score = 10
-    elif funding < -0.0001:
-        fund_score = 8
-    elif funding <= 0.0005:
+    elif funding <= 0.001:
         fund_score = 5
     else:
         fund_score = 0
@@ -185,10 +186,15 @@ def compute_score(data: dict) -> tuple[int, dict]:
         bonus += 3
         breakdown["bonus_adx_rising"] = 3
 
-    # +2 negative funding
-    if funding < -0.0001:
-        bonus += 2
-        breakdown["bonus_neg_funding"] = 2
+    # +3 negative funding (shorts paying longs — rare, very favourable)
+    if funding < 0:
+        bonus += 3
+        breakdown["bonus_neg_funding"] = 3
+
+    # -5 very high funding (> 0.1%): crowded long, increased reversal risk
+    if funding > 0.001:
+        bonus -= 5
+        breakdown["penalty_high_funding"] = -5
 
     breakdown["bonus_total"] = bonus
 
@@ -316,14 +322,17 @@ def compute_score_short(data: dict) -> tuple[int, dict]:
 
     # ── MARKET CONTEXT (25 pts) ───────────────────────────────
 
-    # Funding Rate (10) — positive funding favors shorts
+    # Funding Rate (10) — SHORT favoured when longs are paying high rates
+    # > 0.03% (0.0003): longs paying shorts → full score
+    # 0 to 0.03%      : neutral, acceptable
+    # < -0.1% (-0.001): crowded shorts, penalise via bonus
     funding = data.get("funding_rate", 0.0)
-    if -0.0001 <= funding <= 0.0001:
+    if funding >= 0.0003:
         fund_score = 10
-    elif funding > 0.0001:
-        fund_score = 8
-    elif funding >= -0.0005:
-        fund_score = 5
+    elif funding >= 0:
+        fund_score = 6
+    elif funding >= -0.001:
+        fund_score = 3
     else:
         fund_score = 0
     breakdown["funding"] = fund_score
@@ -379,10 +388,15 @@ def compute_score_short(data: dict) -> tuple[int, dict]:
         bonus += 3
         breakdown["bonus_adx_rising"] = 3
 
-    # +2 positive funding (shorts get paid)
-    if funding > 0.0001:
-        bonus += 2
-        breakdown["bonus_pos_funding"] = 2
+    # +3 high positive funding (> 0.1%): longs paying heavily, favours shorts
+    if funding > 0.001:
+        bonus += 3
+        breakdown["bonus_high_funding"] = 3
+
+    # -5 very negative funding (< -0.1%): crowded shorts, increased reversal risk
+    if funding < -0.001:
+        bonus -= 5
+        breakdown["penalty_neg_funding"] = -5
 
     breakdown["bonus_total"] = bonus
 

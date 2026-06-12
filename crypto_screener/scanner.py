@@ -2,6 +2,7 @@
 
 import logging
 import asyncio
+import time
 import aiohttp
 import pandas as pd
 from types import ModuleType
@@ -26,6 +27,59 @@ log = logging.getLogger(__name__)
 
 # Kept for backward-compat (main.py imports BINANCE_BASE for fetch_latest_bars)
 BINANCE_BASE = "https://fapi.binance.com"
+
+# ── 4H trend cache ────────────────────────────────────────────────────
+# {symbol: (timestamp, "BULLISH" | "BEARISH" | "NEUTRAL" | "UNKNOWN")}
+_4h_bias_cache: dict[str, tuple[float, str]] = {}
+_4H_CACHE_TTL = 7200  # 2 hours
+
+
+async def _fetch_4h_bias(
+    session: aiohttp.ClientSession, symbol: str, source: ModuleType
+) -> str:
+    """
+    Returns 4H trend bias for a symbol using EMA50 and EMA200 on 4H candles.
+    BULLISH : price > EMA200 AND EMA50 > EMA200
+    BEARISH : price < EMA200 AND EMA50 < EMA200
+    NEUTRAL : mixed (e.g. price above but EMA50 below EMA200)
+    UNKNOWN : not enough data or fetch failed
+    Results are cached for _4H_CACHE_TTL seconds.
+    """
+    now = time.time()
+    cached = _4h_bias_cache.get(symbol)
+    if cached and now - cached[0] < _4H_CACHE_TTL:
+        return cached[1]
+
+    try:
+        raw = await source.fetch_klines(session, symbol, "4h", 210)
+    except Exception:
+        _4h_bias_cache[symbol] = (now, "UNKNOWN")
+        return "UNKNOWN"
+
+    if not raw or len(raw) < 60:
+        _4h_bias_cache[symbol] = (now, "UNKNOWN")
+        return "UNKNOWN"
+
+    df    = _klines_to_df(raw)
+    close = df["close"]
+    ema50  = calc_ema(close, 50)
+    ema200 = calc_ema(close, 200)
+
+    e50  = ema50.iloc[-1]
+    e200 = ema200.iloc[-1]
+    c    = close.iloc[-1]
+
+    if pd.isna(e50) or pd.isna(e200):
+        bias = "UNKNOWN"
+    elif c > e200 and e50 > e200:
+        bias = "BULLISH"
+    elif c < e200 and e50 < e200:
+        bias = "BEARISH"
+    else:
+        bias = "NEUTRAL"
+
+    _4h_bias_cache[symbol] = (now, bias)
+    return bias
 
 
 # ── Binance raw fetch helpers (used by fetch_latest_bars in main.py) ─
@@ -413,6 +467,18 @@ async def scan_symbol(
                     signals.append(sig)
             except Exception as e:
                 log.debug("%s %s error: %s", symbol, fn.__name__, e)
+
+    # ── 4H trend filter (scalp mode only) ─────────────────────────────
+    # Only fetch 4H data for symbols that already have a 5m signal (cache miss
+    # is the expensive path; on subsequent scans it's a dict lookup).
+    if mode == "scalp" and signals:
+        bias_4h = await _fetch_4h_bias(session, symbol, source)
+        if bias_4h not in ("UNKNOWN",):  # UNKNOWN = no data, let it through
+            signals = [
+                s for s in signals
+                if (s["direction"] == "LONG"  and bias_4h == "BULLISH")
+                or (s["direction"] == "SHORT" and bias_4h == "BEARISH")
+            ]
 
     return signals
 

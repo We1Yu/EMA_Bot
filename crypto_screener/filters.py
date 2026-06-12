@@ -1,11 +1,12 @@
 """Hard filter gate — any failure discards the symbol entirely."""
 
 import pandas as pd
-from indicators import calc_sma, calc_rsi, calc_adx, calc_bbw
+from indicators import calc_sma, calc_rsi, calc_adx, calc_bbw, calc_atr
 from config import (
     CLUSTER_THRESHOLD, VOL_RATIO_MIN, BODY_PCT_MIN,
     RSI_MIN, RSI_MAX, RSI_PERIOD, ADX_MIN, ADX_PERIOD,
     EMA200_SKIP_PCT, RSI_MIN_SHORT, RSI_MAX_SHORT,
+    BBW_PERIOD, BBW_STD, BBW_MIN_WIDTH, ATR_PERIOD,
 )
 
 
@@ -47,6 +48,15 @@ def apply_hard_filters(data: dict) -> tuple[bool, str]:
     if not breakout_ok:
         return False, "no breakout above MA cluster"
 
+    # Anti-chase: price must be within 2 ATR of the cluster center
+    atr_s = calc_atr(high, low, close, ATR_PERIOD)
+    atr_now = atr_s.iloc[-1]
+    if not pd.isna(atr_now) and atr_now > 0:
+        cluster_center = sum(ma_vals) / len(ma_vals)
+        dist = c_last - cluster_center
+        if dist > 2 * atr_now:
+            return False, f"chase filter: {dist/atr_now:.1f} ATR above cluster center"
+
     # Volume: vol[-1] >= 1.5x rolling 5-bar avg
     if len(volume) < 6:
         return False, "insufficient volume data"
@@ -75,6 +85,12 @@ def apply_hard_filters(data: dict) -> tuple[bool, str]:
         return False, f"adx={adx_now:.1f}<{ADX_MIN}"
     if pdi_s.iloc[-1] <= mdi_s.iloc[-1]:
         return False, f"+DI({pdi_s.iloc[-1]:.1f})<=-DI({mdi_s.iloc[-1]:.1f})"
+
+    # ── F4.5: Volatility gate — BB Width must be wide enough ─
+    bbw_s = calc_bbw(close, BBW_PERIOD, BBW_STD)
+    bbw_now = bbw_s.iloc[-1]
+    if pd.isna(bbw_now) or bbw_now < BBW_MIN_WIDTH:
+        return False, f"bbw={bbw_now:.3f}<{BBW_MIN_WIDTH} (market too quiet)"
 
     # ── F5: Weekly macro trend ────────────────────────────────
     w_close = data.get("weekly_close")
@@ -131,6 +147,15 @@ def apply_hard_filters_short(data: dict) -> tuple[bool, str]:
     if not breakdown_ok:
         return False, "no breakdown below MA cluster"
 
+    # Anti-chase: price must be within 2 ATR of the cluster center
+    atr_s = calc_atr(high, low, close, ATR_PERIOD)
+    atr_now = atr_s.iloc[-1]
+    if not pd.isna(atr_now) and atr_now > 0:
+        cluster_center = sum(ma_vals) / len(ma_vals)
+        dist = cluster_center - c_last
+        if dist > 2 * atr_now:
+            return False, f"chase filter: {dist/atr_now:.1f} ATR below cluster center"
+
     # Volume: vol[-1] >= 1.5x rolling 5-bar avg
     if len(volume) < 6:
         return False, "insufficient volume data"
@@ -159,6 +184,12 @@ def apply_hard_filters_short(data: dict) -> tuple[bool, str]:
         return False, f"adx={adx_now:.1f}<{ADX_MIN}"
     if mdi_s.iloc[-1] <= pdi_s.iloc[-1]:
         return False, f"-DI({mdi_s.iloc[-1]:.1f})<=+DI({pdi_s.iloc[-1]:.1f})"
+
+    # Volatility gate — BB Width must be wide enough
+    bbw_s = calc_bbw(close, BBW_PERIOD, BBW_STD)
+    bbw_now = bbw_s.iloc[-1]
+    if pd.isna(bbw_now) or bbw_now < BBW_MIN_WIDTH:
+        return False, f"bbw={bbw_now:.3f}<{BBW_MIN_WIDTH} (market too quiet)"
 
     # Weekly macro trend — must be bearish
     w_close = data.get("weekly_close")

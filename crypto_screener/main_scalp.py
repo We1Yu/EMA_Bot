@@ -6,7 +6,7 @@ Two independent loops:
   - Position loop (every SCALP_CHECK_INTERVAL_SECS, default 12s):
     fetches the current price for every open paper position and checks
     stop-loss / take-profit immediately, so exits trigger fast.
-  - Scan loop (every SCALP_SCAN_INTERVAL_SECS, default 60s):
+  - Scan loop (aligned to 5-minute candle close, +5s buffer):
     re-runs the full crypto_screener scoring pipeline on SCALP_INTERVAL
     candles (default 5m) across all BingX perpetuals and opens new
     paper positions for fresh signals.
@@ -38,7 +38,7 @@ from discord_alert import send_daily_report
 from indicators import calc_sma as _calc_sma, calc_adx as _calc_adx
 
 from config import (
-    SCALP_INTERVAL, SCALP_SCAN_INTERVAL_SECS, SCALP_CHECK_INTERVAL_SECS,
+    SCALP_INTERVAL, SCALP_CHECK_INTERVAL_SECS,
     SCALP_COOLDOWN_SECS, SCALP_PAPER_INITIAL_BALANCE, SCALP_PAPER_RISK_PCT,
     SCALP_DISCORD_WEBHOOK,
     SCALP_MIN_SCORE, SCALP_MIN_RR, SCALP_MAX_POSITIONS,
@@ -269,7 +269,9 @@ async def scan_loop(
             btc_bias, btc_extreme = await fetch_btc_trend(session)
             if btc_extreme:
                 print(f"  [SKIP] BTC ADX 極端波動，暫停本輪開倉")
-                await asyncio.sleep(SCALP_SCAN_INTERVAL_SECS)
+                _now = time.time()
+                _next_5m = (int(_now / 300) + 1) * 300 + 5
+                await asyncio.sleep(max(_next_5m - time.time(), 10))
                 continue
             print(f"  BTC bias: {btc_bias}")
 
@@ -279,11 +281,20 @@ async def scan_loop(
             now_ts = time.time()  # refresh after scan completes
             opened  = 0
             skipped = {"blacklist": 0, "score": 0, "rr": 0, "drift": 0,
-                       "max_pos": 0, "cooldown": 0, "duplicate": 0, "btc_bias": 0}
+                       "max_pos": 0, "cooldown": 0, "duplicate": 0, "btc_bias": 0,
+                       "time_block": 0}
+
+            # Gate 1: 時間封鎖（低流動性時段不開新倉）
+            allow_new_entries = now_dt.hour in SCALP_ALLOWED_HOURS_TWN
+            if not allow_new_entries:
+                print(f"  [SKIP] 時間封鎖 ({now_dt.hour:02d}:xx TWN)，不開新倉")
 
             # Gate 2-8 靜態過濾，收集通過的候選
             candidates = []
             for sig in signals:
+                if not allow_new_entries:
+                    skipped["time_block"] += 1
+                    continue
                 sym = sig["symbol"]
                 if len(account.positions) >= SCALP_MAX_POSITIONS:
                     skipped["max_pos"] += 1
@@ -357,36 +368,10 @@ async def scan_loop(
         except Exception as e:
             log.warning("scan_loop error: %s", e)
 
-        await asyncio.sleep(SCALP_SCAN_INTERVAL_SECS)
-
-
-async def report_loop() -> None:
-    """Send a periodic performance report to Discord every REPORT_INTERVAL_HOURS hours."""
-    interval = REPORT_INTERVAL_HOURS * 3600
-    # 等到下一個整點再開始，讓報告時間對齊（例如 06:00 / 12:00 / 18:00 / 00:00 TWN）
-    now_dt  = datetime.now(TW_TZ)
-    next_h  = ((now_dt.hour // REPORT_INTERVAL_HOURS) + 1) * REPORT_INTERVAL_HOURS
-    next_dt = now_dt.replace(hour=next_h % 24, minute=0, second=0, microsecond=0)
-    if next_h >= 24:
-        next_dt = next_dt + timedelta(days=1)
-    wait_secs = (next_dt - now_dt).total_seconds()
-    print(f"[REPORT] 下次績效報告: {next_dt.strftime('%Y-%m-%d %H:%M TWN')} (等候 {wait_secs/3600:.1f}h)")
-    await asyncio.sleep(wait_secs)
-
-    while True:
-        try:
-            trades = load_trades(days=7)
-            if len(trades) >= 10:
-                s = compute_stats(trades)
-                now_str = datetime.now(TW_TZ).strftime("%Y-%m-%d %H:%M TWN")
-                print(f"\n[REPORT] 發送績效報告 | {now_str} | 完整交易: {s['full_trades']} | WR: {s['win_rate']:.1f}%")
-                if SCALP_DISCORD_WEBHOOK:
-                    await send_performance_report(s, days=7, webhook_url=SCALP_DISCORD_WEBHOOK)
-            else:
-                print(f"[REPORT] 交易數不足 ({len(trades)} < 10)，跳過本次報告")
-        except Exception as e:
-            log.warning("report_loop error: %s", e)
-        await asyncio.sleep(interval)
+        # Sleep until next 5-minute candle close (+5s buffer for exchange to finalise)
+        _now = time.time()
+        _next_5m = (int(_now / 300) + 1) * 300 + 5
+        await asyncio.sleep(max(_next_5m - time.time(), 10))
 
 
 async def _close_all_positions(account: PaperAccount) -> None:
@@ -503,7 +488,7 @@ def main() -> None:
 
     print("=" * 55)
     print("  Crypto Screener — High-Frequency Scalp Bot (BingX)")
-    print(f"  Interval: {SCALP_INTERVAL} | Scan every {SCALP_SCAN_INTERVAL_SECS}s | "
+    print(f"  Interval: {SCALP_INTERVAL} | Scan at 5m candle close | "
           f"Position check every {SCALP_CHECK_INTERVAL_SECS}s")
     print("=" * 55)
 
