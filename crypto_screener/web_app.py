@@ -5,7 +5,6 @@
 """
 
 import asyncio
-import importlib.util
 import json
 import time
 from datetime import datetime, timezone, timedelta
@@ -22,21 +21,6 @@ TW_TZ         = timezone(timedelta(hours=8))
 PAPER_FILE    = Path(__file__).parent / "paper_account_scalp.json"
 STATE_FILE    = Path(__file__).parent / "scalp_state.json"
 SESSIONS_FILE = Path(__file__).parent / "sessions_log.jsonl"
-
-# ── EMA Scanner account (separate module/process) ──────────────────
-EMA_DIR          = Path(__file__).parent.parent / "ema_scanner"
-EMA_PAPER_FILE   = EMA_DIR / "paper_account.json"
-EMA_SIGNALS_FILE = EMA_DIR / "signals_log.json"
-
-
-def _load_module(name: str, path: Path):
-    spec   = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-PaperTrader = _load_module("ema_paper_trader", EMA_DIR / "paper_trader.py").PaperTrader
 
 app = Flask(__name__)
 
@@ -166,70 +150,6 @@ def api_state():
         "start_time":     _tw(state["start_time"]) if state.get("start_time") else "-",
         "stop_time":      _tw(stop_ts) if stop_ts else None,
         "sessions":       sessions[-20:],
-    })
-
-
-@app.route("/api/ema_state")
-def api_ema_state():
-    trader = PaperTrader.load(EMA_PAPER_FILE)
-
-    pos_symbols = list(trader.positions.keys())
-    cur_prices  = asyncio.run(_fetch_prices(pos_symbols))
-
-    positions = []
-    for sym, pos in trader.positions.items():
-        cur = cur_prices.get(sym)
-        remaining = 0.5 if pos.tp1_hit else 1.0
-
-        upnl = upnl_pct = None
-        if cur is not None:
-            if pos.direction == "LONG":
-                upnl = (cur - pos.entry_price) * pos.contracts * remaining
-                upnl_pct = (cur - pos.entry_price) / pos.entry_price * 100
-            else:
-                upnl = (pos.entry_price - cur) * pos.contracts * remaining
-                upnl_pct = (pos.entry_price - cur) / pos.entry_price * 100
-
-        positions.append({
-            "symbol":     sym,
-            "direction":  pos.direction,
-            "strategy":   pos.strategy,
-            "score":      pos.score,
-            "entry":      pos.entry_price,
-            "cur_price":  cur,
-            "stop_loss":  pos.stop_loss,
-            "target_1":   pos.target1,
-            "target_2":   pos.target2,
-            "contracts":  round(pos.contracts, 6),
-            "notional":   round(pos.notional, 2),
-            "upnl":       round(upnl, 2) if upnl is not None else None,
-            "upnl_pct":   round(upnl_pct, 2) if upnl_pct is not None else None,
-            "tp1_hit":    pos.tp1_hit,
-            "open_time":  _tw(pos.open_time_ms / 1000),
-            "duration":   _duration(pos.open_time_ms / 1000),
-        })
-
-    history = []
-    for t in reversed(trader.trade_history[-100:]):
-        history.append({
-            **t,
-            "open_time_str":  _tw(t["open_ms"] / 1000),
-            "close_time_str": _tw(t["close_ms"] / 1000),
-        })
-
-    signals = []
-    if EMA_SIGNALS_FILE.exists():
-        try:
-            raw = json.loads(EMA_SIGNALS_FILE.read_text(encoding="utf-8"))
-            signals = list(reversed(raw[-20:]))
-        except Exception:
-            pass
-
-    return jsonify({
-        "stats":     trader.get_stats(),
-        "positions": positions,
-        "history":   history,
-        "signals":   signals,
     })
 
 

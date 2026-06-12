@@ -275,7 +275,7 @@ async def scan_loop(
                 continue
             print(f"  BTC bias: {btc_bias}")
 
-            signals, total = await run_scan("scalp", "bingx")
+            signals, total = await run_scan("scalp")
             print(f"Scanned: {total} | Signals: {len(signals)}")
 
             now_ts = time.time()  # refresh after scan completes

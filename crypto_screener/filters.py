@@ -1,55 +1,48 @@
 """Hard filter gate — any failure discards the symbol entirely."""
 
 import pandas as pd
-from indicators import calc_sma, calc_rsi, calc_adx, calc_bbw, calc_atr
+from indicators import calc_atr
 from config import (
-    CLUSTER_THRESHOLD, VOL_RATIO_MIN, BODY_PCT_MIN,
-    RSI_MIN, RSI_MAX, RSI_PERIOD, ADX_MIN, ADX_PERIOD,
-    EMA200_SKIP_PCT, RSI_MIN_SHORT, RSI_MAX_SHORT,
-    BBW_PERIOD, BBW_STD, BBW_MIN_WIDTH, ATR_PERIOD,
+    CLUSTER_THRESHOLD, VOL_RATIO_MIN,
+    EMA200_SKIP_PCT, ATR_PERIOD,
 )
 
 
 def apply_hard_filters(data: dict) -> tuple[bool, str]:
     """
-    Run all hard filters in order.
+    Core hard filters: MA cluster tightness + volume breakout only.
+    RSI / ADX / BBW are soft scoring items, not gates.
     Returns (passed, reason_if_failed).
-    data keys: close, high, low, open_, volume, weekly_close, weekly_ma20,
-               ma15, ma30, ma45, ma60, ma200 (all pd.Series)
     """
     close   = data["close"]
     high    = data["high"]
     low     = data["low"]
-    open_   = data["open_"]
     volume  = data["volume"]
 
-    # ── F1: Core setup ────────────────────────────────────────
     ma15  = data["ma15"]
     ma30  = data["ma30"]
     ma45  = data["ma45"]
     ma60  = data["ma60"]
     ma200 = data["ma200"]
 
-    c_last  = close.iloc[-1]
-    c_prev  = close.iloc[-2]
+    c_last = close.iloc[-1]
+    c_prev = close.iloc[-2]
 
-    # Cluster: spread of 4 MAs on the last CLOSED candle [-2]
+    # ── F1: MA Cluster tightness ──────────────────────────────
     ma_vals = [ma15.iloc[-2], ma30.iloc[-2], ma45.iloc[-2], ma60.iloc[-2]]
     if any(pd.isna(v) for v in ma_vals):
         return False, "insufficient MA data"
 
     spread_pct = (max(ma_vals) - min(ma_vals)) / c_prev
-    cluster_ok = spread_pct < CLUSTER_THRESHOLD
-    if not cluster_ok:
+    if spread_pct >= CLUSTER_THRESHOLD:
         return False, f"cluster_spread={spread_pct:.4f}>={CLUSTER_THRESHOLD}"
 
-    # Breakout: close[-1] > all 4 MAs[-2]
-    breakout_ok = all(c_last > ma for ma in ma_vals)
-    if not breakout_ok:
+    # ── F2: Breakout above cluster ────────────────────────────
+    if not all(c_last > ma for ma in ma_vals):
         return False, "no breakout above MA cluster"
 
-    # Anti-chase: price must be within 2 ATR of the cluster center
-    atr_s = calc_atr(high, low, close, ATR_PERIOD)
+    # ── F3: Anti-chase (within 2 ATR of cluster center) ──────
+    atr_s   = calc_atr(high, low, close, ATR_PERIOD)
     atr_now = atr_s.iloc[-1]
     if not pd.isna(atr_now) and atr_now > 0:
         cluster_center = sum(ma_vals) / len(ma_vals)
@@ -57,50 +50,26 @@ def apply_hard_filters(data: dict) -> tuple[bool, str]:
         if dist > 2 * atr_now:
             return False, f"chase filter: {dist/atr_now:.1f} ATR above cluster center"
 
-    # Volume: vol[-1] >= 1.5x rolling 5-bar avg
+    # ── F4: Volume surge ──────────────────────────────────────
     if len(volume) < 6:
         return False, "insufficient volume data"
     vol_ratio = volume.iloc[-1] / volume.iloc[-6:-1].mean()
     if vol_ratio < VOL_RATIO_MIN:
         return False, f"vol_ratio={vol_ratio:.2f}<{VOL_RATIO_MIN}"
 
-    # ── F2: Candle quality ────────────────────────────────────
-    candle_range = high.iloc[-1] - low.iloc[-1]
-    if candle_range == 0:
+    # ── F5: Candle sanity ─────────────────────────────────────
+    if (high.iloc[-1] - low.iloc[-1]) == 0:
         return False, "zero-range candle"
-    body_pct = abs(c_last - open_.iloc[-1]) / candle_range
-    if body_pct < BODY_PCT_MIN:
-        return False, f"body_pct={body_pct:.2f}<{BODY_PCT_MIN}"
 
-    # ── F3: RSI momentum ─────────────────────────────────────
-    rsi = calc_rsi(close, RSI_PERIOD)
-    rsi_now = rsi.iloc[-1]
-    if pd.isna(rsi_now) or not (RSI_MIN <= rsi_now <= RSI_MAX):
-        return False, f"rsi={rsi_now:.1f} outside [{RSI_MIN},{RSI_MAX}]"
-
-    # ── F4: Trend strength ────────────────────────────────────
-    adx_s, pdi_s, mdi_s = calc_adx(high, low, close, ADX_PERIOD)
-    adx_now = adx_s.iloc[-1]
-    if pd.isna(adx_now) or adx_now < ADX_MIN:
-        return False, f"adx={adx_now:.1f}<{ADX_MIN}"
-    if pdi_s.iloc[-1] <= mdi_s.iloc[-1]:
-        return False, f"+DI({pdi_s.iloc[-1]:.1f})<=-DI({mdi_s.iloc[-1]:.1f})"
-
-    # ── F4.5: Volatility gate — BB Width must be wide enough ─
-    bbw_s = calc_bbw(close, BBW_PERIOD, BBW_STD)
-    bbw_now = bbw_s.iloc[-1]
-    if pd.isna(bbw_now) or bbw_now < BBW_MIN_WIDTH:
-        return False, f"bbw={bbw_now:.3f}<{BBW_MIN_WIDTH} (market too quiet)"
-
-    # ── F5: Weekly macro trend ────────────────────────────────
+    # ── F6: Weekly macro trend ────────────────────────────────
     w_close = data.get("weekly_close")
     w_ma20  = data.get("weekly_ma20")
     if w_close is None or w_ma20 is None:
         return False, "missing weekly data"
     if pd.isna(w_ma20.iloc[-1]) or w_close.iloc[-1] <= w_ma20.iloc[-1]:
-        return False, f"weekly_close below weekly_ma20"
+        return False, "weekly_close below weekly_ma20"
 
-    # ── F6: 200 MA tier classification ───────────────────────
+    # ── F7: 200 MA position ───────────────────────────────────
     m200 = ma200.iloc[-1]
     if pd.isna(m200):
         return False, "ma200 not ready"
@@ -115,13 +84,13 @@ def apply_hard_filters(data: dict) -> tuple[bool, str]:
 
 def apply_hard_filters_short(data: dict) -> tuple[bool, str]:
     """
-    Mirror of apply_hard_filters() for SHORT setups (breakdown below MA cluster).
+    Mirror of apply_hard_filters() for SHORT setups.
+    Core hard filters: MA cluster tightness + volume breakdown only.
     Returns (passed, reason_if_failed).
     """
     close   = data["close"]
     high    = data["high"]
     low     = data["low"]
-    open_   = data["open_"]
     volume  = data["volume"]
 
     ma15  = data["ma15"]
@@ -133,22 +102,21 @@ def apply_hard_filters_short(data: dict) -> tuple[bool, str]:
     c_last = close.iloc[-1]
     c_prev = close.iloc[-2]
 
-    # Cluster: spread of 4 MAs on the last CLOSED candle [-2]
+    # ── F1: MA Cluster tightness ──────────────────────────────
     ma_vals = [ma15.iloc[-2], ma30.iloc[-2], ma45.iloc[-2], ma60.iloc[-2]]
     if any(pd.isna(v) for v in ma_vals):
         return False, "insufficient MA data"
 
     spread_pct = (max(ma_vals) - min(ma_vals)) / c_prev
-    if not (spread_pct < CLUSTER_THRESHOLD):
+    if spread_pct >= CLUSTER_THRESHOLD:
         return False, f"cluster_spread={spread_pct:.4f}>={CLUSTER_THRESHOLD}"
 
-    # Breakdown: close[-1] < all 4 MAs[-2]
-    breakdown_ok = all(c_last < ma for ma in ma_vals)
-    if not breakdown_ok:
+    # ── F2: Breakdown below cluster ───────────────────────────
+    if not all(c_last < ma for ma in ma_vals):
         return False, "no breakdown below MA cluster"
 
-    # Anti-chase: price must be within 2 ATR of the cluster center
-    atr_s = calc_atr(high, low, close, ATR_PERIOD)
+    # ── F3: Anti-chase (within 2 ATR of cluster center) ──────
+    atr_s   = calc_atr(high, low, close, ATR_PERIOD)
     atr_now = atr_s.iloc[-1]
     if not pd.isna(atr_now) and atr_now > 0:
         cluster_center = sum(ma_vals) / len(ma_vals)
@@ -156,42 +124,18 @@ def apply_hard_filters_short(data: dict) -> tuple[bool, str]:
         if dist > 2 * atr_now:
             return False, f"chase filter: {dist/atr_now:.1f} ATR below cluster center"
 
-    # Volume: vol[-1] >= 1.5x rolling 5-bar avg
+    # ── F4: Volume surge ──────────────────────────────────────
     if len(volume) < 6:
         return False, "insufficient volume data"
     vol_ratio = volume.iloc[-1] / volume.iloc[-6:-1].mean()
     if vol_ratio < VOL_RATIO_MIN:
         return False, f"vol_ratio={vol_ratio:.2f}<{VOL_RATIO_MIN}"
 
-    # Candle quality
-    candle_range = high.iloc[-1] - low.iloc[-1]
-    if candle_range == 0:
+    # ── F5: Candle sanity ─────────────────────────────────────
+    if (high.iloc[-1] - low.iloc[-1]) == 0:
         return False, "zero-range candle"
-    body_pct = abs(c_last - open_.iloc[-1]) / candle_range
-    if body_pct < BODY_PCT_MIN:
-        return False, f"body_pct={body_pct:.2f}<{BODY_PCT_MIN}"
 
-    # RSI momentum (mirrored bearish zone)
-    rsi = calc_rsi(close, RSI_PERIOD)
-    rsi_now = rsi.iloc[-1]
-    if pd.isna(rsi_now) or not (RSI_MIN_SHORT <= rsi_now <= RSI_MAX_SHORT):
-        return False, f"rsi={rsi_now:.1f} outside [{RSI_MIN_SHORT},{RSI_MAX_SHORT}]"
-
-    # Trend strength — -DI must lead +DI
-    adx_s, pdi_s, mdi_s = calc_adx(high, low, close, ADX_PERIOD)
-    adx_now = adx_s.iloc[-1]
-    if pd.isna(adx_now) or adx_now < ADX_MIN:
-        return False, f"adx={adx_now:.1f}<{ADX_MIN}"
-    if mdi_s.iloc[-1] <= pdi_s.iloc[-1]:
-        return False, f"-DI({mdi_s.iloc[-1]:.1f})<=+DI({pdi_s.iloc[-1]:.1f})"
-
-    # Volatility gate — BB Width must be wide enough
-    bbw_s = calc_bbw(close, BBW_PERIOD, BBW_STD)
-    bbw_now = bbw_s.iloc[-1]
-    if pd.isna(bbw_now) or bbw_now < BBW_MIN_WIDTH:
-        return False, f"bbw={bbw_now:.3f}<{BBW_MIN_WIDTH} (market too quiet)"
-
-    # Weekly macro trend — must be bearish
+    # ── F6: Weekly macro trend (bearish) ─────────────────────
     w_close = data.get("weekly_close")
     w_ma20  = data.get("weekly_ma20")
     if w_close is None or w_ma20 is None:
@@ -199,7 +143,7 @@ def apply_hard_filters_short(data: dict) -> tuple[bool, str]:
     if pd.isna(w_ma20.iloc[-1]) or w_close.iloc[-1] >= w_ma20.iloc[-1]:
         return False, "weekly_close above weekly_ma20"
 
-    # 200 MA tier classification (mirrored)
+    # ── F7: 200 MA position ───────────────────────────────────
     m200 = ma200.iloc[-1]
     if pd.isna(m200):
         return False, "ma200 not ready"

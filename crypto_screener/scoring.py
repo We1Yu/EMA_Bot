@@ -1,7 +1,7 @@
 """Scoring system — 0-150 base, bonuses uncapped."""
 
 import pandas as pd
-from indicators import calc_rsi, calc_bbw, calc_adx, calc_sma
+from indicators import calc_rsi, calc_bbw, calc_adx, calc_sma, calc_macd
 from config import (
     CLUSTER_THRESHOLD, VOL_RATIO_MIN, RSI_PERIOD, ADX_PERIOD,
     BBW_PERIOD, BBW_STD, BBW_STRONG, BBW_MED, BBW_WEAK,
@@ -120,6 +120,23 @@ def compute_score(data: dict) -> tuple[int, dict]:
         adx_score = 0
     breakdown["adx_strength"] = adx_score
 
+    # ── MACD MOMENTUM (10 pts) ───────────────────────────────
+    _, _, macd_hist = calc_macd(close)
+    h_now  = macd_hist.iloc[-1]
+    h_prev = macd_hist.iloc[-2]
+    if not pd.isna(h_now) and not pd.isna(h_prev):
+        if h_now > 0 and h_now > h_prev:
+            macd_score = 10   # 柱體正值且擴張 → 強勢
+        elif h_now > 0:
+            macd_score = 5    # 柱體正值但收縮
+        elif h_now > h_prev:
+            macd_score = 3    # 柱體負值但回升（動能轉折初期）
+        else:
+            macd_score = 0
+    else:
+        macd_score = 0
+    breakdown["macd_momentum"] = macd_score
+
     # ── MARKET CONTEXT (25 pts) ───────────────────────────────
 
     # Funding Rate (10) — LONG favoured when funding is low/negative
@@ -201,6 +218,7 @@ def compute_score(data: dict) -> tuple[int, dict]:
     base  = (cluster_score + vol_score + body_score +
              rsi_score + bbw_score + close_pos_score +
              ma200_score + slope_score + adx_score +
+             macd_score +
              fund_score + mom_score + weekly_score)
     total = int(round(base + bonus))
     breakdown["base"]  = round(base, 1)
@@ -320,6 +338,23 @@ def compute_score_short(data: dict) -> tuple[int, dict]:
         adx_score = 0
     breakdown["adx_strength"] = adx_score
 
+    # ── MACD MOMENTUM (10 pts) ───────────────────────────────
+    _, _, macd_hist = calc_macd(close)
+    h_now  = macd_hist.iloc[-1]
+    h_prev = macd_hist.iloc[-2]
+    if not pd.isna(h_now) and not pd.isna(h_prev):
+        if h_now < 0 and h_now < h_prev:
+            macd_score = 10   # 柱體負值且擴張 → 空頭強勢
+        elif h_now < 0:
+            macd_score = 5    # 柱體負值但收縮
+        elif h_now < h_prev:
+            macd_score = 3    # 柱體正值但下滑（動能轉弱初期）
+        else:
+            macd_score = 0
+    else:
+        macd_score = 0
+    breakdown["macd_momentum"] = macd_score
+
     # ── MARKET CONTEXT (25 pts) ───────────────────────────────
 
     # Funding Rate (10) — SHORT favoured when longs are paying high rates
@@ -403,6 +438,7 @@ def compute_score_short(data: dict) -> tuple[int, dict]:
     base  = (cluster_score + vol_score + body_score +
              rsi_score + bbw_score + close_pos_score +
              ma200_score + slope_score + adx_score +
+             macd_score +
              fund_score + mom_score + weekly_score)
     total = int(round(base + bonus))
     breakdown["base"]  = round(base, 1)

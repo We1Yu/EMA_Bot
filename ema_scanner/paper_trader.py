@@ -221,7 +221,7 @@ class PaperTrader:
         print(f"  平均虧損：  ${s.get('avg_loss', 0):>+12,.2f}")
         pf = s.get('profit_factor')
         print(f"  獲利因子：  {f'{pf:.2f}' if pf is not None else 'N/A'}")
-        print(f"  持倉中：    {s['open_positions']} 筆")
+        print(f"  持倉中：    {s.get('open_positions', len(self.positions))} 筆")
         if self.positions:
             for sym, pos in self.positions.items():
                 ts = datetime.fromtimestamp(pos.open_time_ms / 1000, tz=TW_TZ)

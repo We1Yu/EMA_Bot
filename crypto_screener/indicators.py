@@ -73,6 +73,18 @@ def calc_atr(
     return tr.ewm(com=period - 1, min_periods=period).mean()
 
 
+def calc_macd(
+    series: pd.Series,
+    fast: int = 12, slow: int = 26, signal: int = 9,
+) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """Returns (macd_line, signal_line, histogram)."""
+    ema_fast = series.ewm(span=fast, adjust=False).mean()
+    ema_slow = series.ewm(span=slow, adjust=False).mean()
+    macd     = ema_fast - ema_slow
+    sig      = macd.ewm(span=signal, adjust=False).mean()
+    return macd, sig, macd - sig
+
+
 class FibLevels(NamedTuple):
     fib_0618:  float   # pullback support
     fib_1272:  float   # target 1 (conservative)

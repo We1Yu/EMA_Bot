@@ -8,6 +8,7 @@ crypto_screener/scalp_state.json
 crypto_screener/trade_history_scalp.csv
 crypto_screener/signals_history_scalp.jsonl
 crypto_screener/equity_history_scalp.jsonl
+crypto_screener/sessions_log.jsonl
 ema_scanner/signals_log.json
 ema_scanner/signals_history.jsonl
 ema_scanner/trade_history.csv

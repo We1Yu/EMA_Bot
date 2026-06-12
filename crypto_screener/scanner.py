@@ -495,7 +495,11 @@ def _try_ma_breakout(
     open_  = df["open"]
     volume = df["volume"]
 
-    ma15, ma30, ma45, ma60, ma200 = [calc_sma(close, p) for p in MA_PERIODS]
+    ma15  = calc_ema(close, 15)
+    ma30  = calc_ema(close, 30)
+    ma45  = calc_ema(close, 45)
+    ma60  = calc_ema(close, 60)
+    ma200 = calc_sma(close, 200)
 
     weekly_close = wdf["close"]
     weekly_ma20  = calc_sma(weekly_close, 20)
@@ -549,18 +553,6 @@ def _try_ma_breakout(
         score, breakdown = compute_score(indicator_data)
     else:
         score, breakdown = compute_score_short(indicator_data)
-
-    # ── 多重指標確認：5 個子指標至少 3 個有效 ────────────────────
-    indicator_checks = [
-        breakdown.get("rsi_zone", 0) > 0,
-        breakdown.get("bbw_compression", 0) > 0,
-        breakdown.get("adx_strength", 0) > 0,
-        breakdown.get("volume_surge", 0) > 5,
-        breakdown.get("body_quality", 0) > 5,
-    ]
-    if sum(indicator_checks) < 3:
-        log.debug("%s: multi-indicator check failed (%d/5)", symbol, sum(indicator_checks))
-        return None
 
     atr_series = calc_atr(high, low, close, ATR_PERIOD)
     atr_now    = atr_series.iloc[-1]
@@ -625,25 +617,21 @@ def _try_ma_breakout(
 
 # ── Full scan orchestration ───────────────────────────────────────────
 
-async def run_scan(mode: str = "swing", exchange: str = "binance") -> tuple[list[dict], int]:
+async def run_scan(mode: str = "scalp") -> tuple[list[dict], int]:
     """
-    Scan all perpetual symbols on the given exchange.
-    exchange: "binance" (default) or "bingx"
+    Scan all BingX perpetual symbols.
     Returns (signals, total_scanned).
     """
-    if exchange == "bingx":
-        import bingx_source as source
-    else:
-        import binance_source as source
+    import bingx_source as source
 
     async with aiohttp.ClientSession() as session:
         symbols = await source.fetch_symbols(session)
         if not symbols:
-            log.error("Could not fetch symbol list from %s", exchange)
+            log.error("Could not fetch symbol list from bingx")
             return [], 0
 
         total_scanned = len(symbols)
-        log.info("[%s] Scanning %d symbols...", exchange.upper(), total_scanned)
+        log.info("[BINGX] Scanning %d symbols...", total_scanned)
         signals: list[dict] = []
 
         for i in range(0, len(symbols), BATCH_SIZE):
