@@ -11,7 +11,7 @@ from datetime import datetime, timezone, timedelta
 TW_TZ       = timezone(timedelta(hours=8))
 WEBHOOK_URL = os.environ.get(
     "DISCORD_WEBHOOK_URL",
-    "https://discord.com/api/webhooks/1513800551186301010/WBcMxjBRVzTmZN2IV15DXchzwXDdugeqY4HZTLG2Sdm0Rw-14kNp5ztzxYeg--0J8Xn_"
+    "https://discord.com/api/webhooks/1514452738388394117/ODRJqHBCALHUWQOs6C9ZK0mhrYh8bcY_BU3b544oK8zKOsC14A15m0KMdld2VBiE_QSs"
 )
 
 COLOR_LONG     = 0x00FF88

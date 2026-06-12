@@ -92,40 +92,101 @@ def append_session_log(event: str, ts: float, extra: dict | None = None) -> None
 
 
 def archive_session(start_ts: float, stop_ts: float, stats: dict) -> None:
-    """把本次 session 的所有資料檔複製到 sessions/<start_time>/ 資料夾。"""
-    folder_name = datetime.fromtimestamp(start_ts, tz=TW_TZ).strftime("%Y-%m-%d_%H-%M")
-    dest = SESSIONS_DIR / folder_name
-    dest.mkdir(parents=True, exist_ok=True)
+    """關機時將本次交易紀錄匯出為 Excel，存至 sessions/<start_time>.xlsx。"""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, numbers
+    from openpyxl.utils import get_column_letter
 
-    # 要歸檔的檔案
-    files_to_copy = [
-        TRADES_JSONL,
-        TRADE_CSV,
-        EQUITY_JSONL,
-        SIGNALS_JSONL,
-        PAPER_FILE,
-        STATE_FILE,
+    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    file_name = datetime.fromtimestamp(start_ts, tz=TW_TZ).strftime("%Y-%m-%d_%H-%M") + ".xlsx"
+    dest = SESSIONS_DIR / file_name
+
+    wb = openpyxl.Workbook()
+
+    # ── 分頁 1：交易明細 ────────────────────────────────────────
+    ws = wb.active
+    ws.title = "交易明細"
+
+    trades: list[dict] = []
+    if TRADES_JSONL.exists():
+        for line in TRADES_JSONL.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                trades.append(json.loads(line))
+
+    col_map = [
+        ("開倉時間",   "open_time"),
+        ("平倉時間",   "close_time"),
+        ("交易對",     "symbol"),
+        ("策略",       "strategy"),
+        ("方向",       "direction"),
+        ("Tier",       "tier"),
+        ("評分",       "score"),
+        ("進場價",     "entry"),
+        ("出場價",     "exit"),
+        ("止損",       "stop_loss"),
+        ("TP1",        "target_1"),
+        ("TP2",        "target_2"),
+        ("張數",       "contracts"),
+        ("損益 $",     "pnl"),
+        ("出場原因",   "reason"),
+        ("完整平倉",   "full_close"),
     ]
-    for src in files_to_copy:
-        if src.exists():
-            shutil.copy2(src, dest / src.name)
 
-    # 額外寫一份 session 摘要
-    summary = {
-        "start_time": _fmt_tw(start_ts),
-        "stop_time":  _fmt_tw(stop_ts),
-        "duration":   _duration_str(start_ts, stop_ts),
-        "initial_balance": SCALP_PAPER_INITIAL_BALANCE,
-        **{k: stats.get(k) for k in (
-            "current_balance", "total_pnl", "return_pct",
-            "win_rate", "full_closes", "wins", "losses",
-            "max_drawdown_pct", "profit_factor",
-        )},
-    }
-    (dest / "session_summary.json").write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    print(f"[ARCHIVE] 本次 session 資料已存至 sessions/{folder_name}/")
+    hdr_fill = PatternFill("solid", fgColor="1F3864")
+    hdr_font = Font(bold=True, color="FFFFFF")
+
+    for col_idx, (label, _) in enumerate(col_map, 1):
+        cell = ws.cell(row=1, column=col_idx, value=label)
+        cell.fill = hdr_fill
+        cell.font = hdr_font
+        cell.alignment = Alignment(horizontal="center")
+
+    for row_idx, t in enumerate(trades, 2):
+        pnl = t.get("pnl", 0)
+        row_fill = PatternFill("solid", fgColor="C6EFCE" if pnl >= 0 else "FFC7CE")
+        for col_idx, (_, key) in enumerate(col_map, 1):
+            val = t.get(key)
+            if key in ("open_time", "close_time") and isinstance(val, (int, float)):
+                val = datetime.fromtimestamp(val, tz=TW_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            cell = ws.cell(row=row_idx, column=col_idx, value=val)
+            cell.fill = row_fill
+            if key == "pnl":
+                cell.number_format = '+#,##0.00;-#,##0.00'
+
+    for col_idx in range(1, len(col_map) + 1):
+        ws.column_dimensions[get_column_letter(col_idx)].auto_size = True
+
+    ws.freeze_panes = "A2"
+
+    # ── 分頁 2：摘要 ────────────────────────────────────────────
+    ws2 = wb.create_sheet("摘要")
+    summary_rows = [
+        ("開機時間",   _fmt_tw(start_ts)),
+        ("關機時間",   _fmt_tw(stop_ts)),
+        ("執行時長",   _duration_str(start_ts, stop_ts)),
+        ("初始資金",   f"${SCALP_PAPER_INITIAL_BALANCE:,.2f}"),
+        ("最終餘額",   f"${stats.get('current_balance', 0):,.2f}"),
+        ("總損益",     f"${stats.get('total_pnl', 0):+,.2f}"),
+        ("報酬率",     f"{stats.get('return_pct', 0):+.2f}%"),
+        ("最大回撤",   f"{stats.get('max_drawdown_pct', 0):.2f}%"),
+        ("勝率",       f"{stats.get('win_rate', 0):.1f}%"),
+        ("已平倉",     stats.get("full_closes", 0)),
+        ("勝",         stats.get("wins", 0)),
+        ("敗",         stats.get("losses", 0)),
+        ("獲利因子",   stats.get("profit_factor")),
+    ]
+    key_font  = Font(bold=True)
+    key_fill  = PatternFill("solid", fgColor="DDEEFF")
+    for r, (label, val) in enumerate(summary_rows, 1):
+        k = ws2.cell(row=r, column=1, value=label)
+        k.font = key_font
+        k.fill = key_fill
+        ws2.cell(row=r, column=2, value=val)
+    ws2.column_dimensions["A"].width = 14
+    ws2.column_dimensions["B"].width = 22
+
+    wb.save(dest)
+    print(f"[ARCHIVE] 交易紀錄已存至 sessions/{file_name}")
 
 
 def save_state(account: PaperAccount, signals: list[dict], total_scanned: int) -> None:
