@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.3.0] - 2026-06-12
+
+### 資安修正
+- **移除硬編碼 Discord Webhook URL**
+  - `crypto_screener/config.py`：`SCALP_DISCORD_WEBHOOK` 改由環境變數 `SCALP_DISCORD_WEBHOOK` 讀取，預設空字串
+  - `ema_scanner/discord_bot.py`：`WEBHOOK_URL` 改由環境變數 `DISCORD_WEBHOOK_URL` 讀取，移除硬編碼 fallback URL
+- **新增 `ema_scanner/.env`** 範本檔，提供環境變數設定參考（已加入 `.gitignore`，不會上傳）
+- **新增 `crypto_screener/trades_scalp.jsonl` 至 `.gitignore`**，避免個人交易紀錄上傳至 GitHub
+- **新增 git pre-push hook**（`.git/hooks/pre-push`）：每次 push 前自動掃描是否有硬編碼 API key、Webhook URL、token 等機密資料，發現即阻擋 push
+
 ## [1.2.0] - 2026-06-11
 
 ### 新增

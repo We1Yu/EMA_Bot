@@ -290,6 +290,25 @@ SHORT 版本為完全對稱的跌破邏輯，空單 RSI 區間為 25–55。
 
 ## 設定
 
+### 環境變數（機密設定）
+
+機密資訊透過環境變數傳入，不寫入原始碼。在各機器人目錄建立 `.env` 檔案（`.gitignore` 已排除，不會上傳）：
+
+**`crypto_screener/.env`**
+```
+SCALP_DISCORD_WEBHOOK=https://discord.com/api/webhooks/...
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+```
+
+**`ema_scanner/.env`**
+```
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+```
+
+> Windows 使用者：`.env` 檔案內容需手動設定為系統環境變數（控制台 → 系統 → 進階系統設定 → 環境變數），或透過啟動腳本 `set VAR=value` 注入。
+
+### 交易參數
+
 所有參數集中在 `crypto_screener/config.py`：
 
 ```python
@@ -313,9 +332,6 @@ BTC_MA_PERIOD = 60                     # 5m MA60
 BTC_ADX_PAUSE = 50                     # ADX > 50 暫停所有進場
 
 REPORT_INTERVAL_HOURS = 6              # Discord 績效報告間隔（小時）
-
-# Discord Webhook（留空則不發送）
-SCALP_DISCORD_WEBHOOK = ""
 ```
 
 ---
