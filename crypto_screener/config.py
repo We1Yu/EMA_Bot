@@ -104,5 +104,6 @@ SCALP_SYMBOL_BLOCKLIST: set = {
 REPORT_INTERVAL_HOURS = 6   # 每 N 小時發一次 Discord 績效報告
 
 # ── Discord ────────────────────────────────────────────────────
-# 貼上你的 Webhook URL，留空則不發送
-SCALP_DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1514452738388394117/ODRJqHBCALHUWQOs6C9ZK0mhrYh8bcY_BU3b544oK8zKOsC14A15m0KMdld2VBiE_QSs"
+# 設定環境變數 SCALP_DISCORD_WEBHOOK 或在 .env 填入 Webhook URL，留空則不發送
+import os as _os
+SCALP_DISCORD_WEBHOOK: str = _os.environ.get("SCALP_DISCORD_WEBHOOK", "")
