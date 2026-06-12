@@ -62,14 +62,14 @@ PAPER_RISK_PCT        = 0.02    # 2% per trade
 SCALP_INTERVAL            = "5m"        # candle interval used for scoring
 SCALP_SCAN_INTERVAL_SECS  = 60          # full re-scan (look for new signals)
 SCALP_CHECK_INTERVAL_SECS = 12          # open-position price check / exit
-SCALP_COOLDOWN_SECS       = 5 * 60      # per-symbol dedupe window
+SCALP_COOLDOWN_SECS       = 3 * 60      # per-symbol dedupe window
 
 # ── Extra scalp strategies ─────────────────────────────────────
-RSI_BOUNCE_OVERSOLD    = 33    # RSI threshold for oversold bounce (LONG)
-RSI_BOUNCE_OVERBOUGHT  = 67    # RSI threshold for overbought bounce (SHORT)
+RSI_BOUNCE_OVERSOLD    = 36    # RSI threshold for oversold bounce (LONG)
+RSI_BOUNCE_OVERBOUGHT  = 64    # RSI threshold for overbought bounce (SHORT)
 EMA_FAST_PERIOD        = 9     # fast EMA for crossover strategy
 EMA_SLOW_PERIOD        = 21    # slow EMA for crossover strategy
-VOL_SPIKE_RATIO        = 3.5   # minimum volume multiple for spike strategy
+VOL_SPIKE_RATIO        = 3.0   # minimum volume multiple for spike strategy
 SCALP_PAPER_INITIAL_BALANCE = 1_000_000.0
 SCALP_PAPER_RISK_PCT        = 0.01      # 1% per trade (tighter risk for HF)
 SCALP_DASHBOARD_PORT        = 5000
@@ -77,13 +77,13 @@ SCALP_DASHBOARD_PORT        = 5000
 # ── BTC trend filter ──────────────────────────────────────────
 BTC_SYMBOL          = "BTC-USDT"
 BTC_MA_PERIOD       = 60    # MA60 on 5m — determines BTC bias
-BTC_ADX_PAUSE       = 50    # ADX > 50 → BTC 極端波動，暫停所有進場
+BTC_ADX_PAUSE       = 55    # ADX > 55 → BTC 極端波動，暫停所有進場
 
 # ── Scalp quality gates ────────────────────────────────────────
-SCALP_MIN_SCORE       = 70     # minimum score to open a position
+SCALP_MIN_SCORE       = 65     # minimum score to open a position
 SCALP_MIN_RR          = 1.5    # minimum risk:reward ratio
-SCALP_MAX_POSITIONS   = 8      # max concurrent open positions
-SCALP_MAX_ENTRY_DRIFT = 0.008  # skip if live price drifted >0.8% from signal entry
+SCALP_MAX_POSITIONS   = 12     # max concurrent open positions
+SCALP_MAX_ENTRY_DRIFT = 0.010  # skip if live price drifted >1.0% from signal entry
 
 # ── Time filter (台灣時間，允許開新倉的小時) ───────────────────────
 # 允許：15:00-23:00 (倫敦+紐約盤) 和 00:00-04:00 (紐約尾盤)

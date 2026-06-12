@@ -317,9 +317,9 @@ def _try_ema_cross(symbol: str, df: pd.DataFrame) -> Optional[dict]:
         return None
 
     direction = None
-    if ef_prev <= es_prev and ef_now > es_now and 42 <= rsi_now <= 58:  # 收窄 RSI 區間
+    if ef_prev <= es_prev and ef_now > es_now and 40 <= rsi_now <= 60:
         direction = "LONG"
-    elif ef_prev >= es_prev and ef_now < es_now and 42 <= rsi_now <= 58:
+    elif ef_prev >= es_prev and ef_now < es_now and 40 <= rsi_now <= 60:
         direction = "SHORT"
     if direction is None:
         return None

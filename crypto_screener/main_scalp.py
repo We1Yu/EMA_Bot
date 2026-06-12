@@ -344,7 +344,7 @@ async def scan_loop(
             opened  = 0
             skipped = {"blacklist": 0, "score": 0, "rr": 0, "drift": 0,
                        "max_pos": 0, "cooldown": 0, "duplicate": 0, "btc_bias": 0,
-                       "funding": 0}
+                       "funding": 0, "flow": 0}
 
             # Gate 2-8 靜態過濾，收集通過的候選
             candidates = []
@@ -372,6 +372,15 @@ async def scan_loop(
                     continue
                 if direction == "SHORT" and sig.get("funding", 0) < -FUNDING_EXTREME:
                     skipped["funding"] += 1
+                    continue
+                # 流量方向過濾：淨賣壓 >15% 時不做多；淨買壓 >15% 時不做空
+                # flow_ratio 以百分比儲存（e.g. -20.0 = 淨賣壓 20%）
+                flow = sig.get("flow_ratio", 0.0)
+                if direction == "LONG"  and flow < -15:
+                    skipped["flow"] += 1
+                    continue
+                if direction == "SHORT" and flow >  15:
+                    skipped["flow"] += 1
                     continue
                 if btc_bias == "BEARISH" and direction == "LONG":
                     skipped["btc_bias"] += 1
