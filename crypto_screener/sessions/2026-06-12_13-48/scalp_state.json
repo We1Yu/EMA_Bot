@@ -1,0 +1,88 @@
+{
+  "updated": 1781250314.296209,
+  "start_time": 1781243282.6348245,
+  "stop_time": 1781250584.96919,
+  "interval": "5m",
+  "total_scanned": 691,
+  "stats": {
+    "initial_balance": 1000000.0,
+    "current_balance": 1008333.35,
+    "total_pnl": 8333.35,
+    "return_pct": 0.83,
+    "events": 4,
+    "full_closes": 2,
+    "wins": 1,
+    "losses": 1,
+    "win_rate": 50.0,
+    "avg_win": 18333.35,
+    "avg_loss": -10000.0,
+    "profit_factor": 1.83,
+    "max_drawdown_pct": 0.98,
+    "open_positions": 2,
+    "sl_count": 1,
+    "tp1_count": 1,
+    "tp2_count": 1,
+    "tp3_count": 0,
+    "by_strategy": {
+      "RSI_BOUNCE": {
+        "trades": 1,
+        "pnl": 4500.0,
+        "wins": 1,
+        "losses": 0
+      },
+      "MA_BREAKOUT": {
+        "trades": 1,
+        "pnl": -10000.0,
+        "wins": 0,
+        "losses": 1
+      }
+    }
+  },
+  "signals": [
+    {
+      "symbol": "FLOW-USDT",
+      "direction": "SHORT",
+      "tier": "A",
+      "strategy": "MA_BREAKOUT",
+      "score": 71,
+      "breakdown": {
+        "cluster_tightness": 0.2,
+        "volume_surge": 0.8,
+        "body_quality": 3.3,
+        "rsi_zone": 15,
+        "bbw_compression": 7,
+        "bbw_ratio": 0.691,
+        "close_position": 6.7,
+        "ma200_position": 15,
+        "ma200_slope": 5,
+        "adx_strength": 4,
+        "macd_momentum": 3,
+        "funding": 6,
+        "momentum_24h": 0,
+        "weekly_trend": 5,
+        "bonus_total": 0,
+        "base": 71.0,
+        "total": 71
+      },
+      "ma_spread_pct": 0.792,
+      "vol_ratio": 1.56,
+      "body_pct": 33.3,
+      "rsi": 37.4,
+      "bbw_ratio": 0.691,
+      "adx": 19.3,
+      "funding": 0.005,
+      "change_24h": -0.34,
+      "weekly": "STRONG",
+      "dual_tf_status": "",
+      "entry": 0.0286,
+      "stop_loss": 0.02890866,
+      "target_1": 0.02813701,
+      "target_2": 0.02790552,
+      "target_3": 0.02767403,
+      "primary_target": 0.0284764,
+      "risk_reward": 1.5,
+      "fib_support": 0.0287236,
+      "alert": "SHORT MA_BREAKOUT TIER A | RSI 37 | ADX 19 | R:R 1.5 | Target 0.4%"
+    }
+  ]
+}
