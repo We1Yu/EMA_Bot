@@ -42,7 +42,7 @@ from config import (
     SCALP_COOLDOWN_SECS, SCALP_PAPER_INITIAL_BALANCE, SCALP_PAPER_RISK_PCT,
     SCALP_DISCORD_WEBHOOK,
     SCALP_MIN_SCORE, SCALP_MIN_RR, SCALP_MAX_POSITIONS,
-    SCALP_MAX_ENTRY_DRIFT, SCALP_ALLOWED_HOURS_TWN, SCALP_SYMBOL_BLOCKLIST,
+    SCALP_MAX_ENTRY_DRIFT, SCALP_SYMBOL_BLOCKLIST,
     BTC_SYMBOL, BTC_MA_PERIOD, BTC_ADX_PAUSE,
 )
 
@@ -281,20 +281,11 @@ async def scan_loop(
             now_ts = time.time()  # refresh after scan completes
             opened  = 0
             skipped = {"blacklist": 0, "score": 0, "rr": 0, "drift": 0,
-                       "max_pos": 0, "cooldown": 0, "duplicate": 0, "btc_bias": 0,
-                       "time_block": 0}
-
-            # Gate 1: 時間封鎖（低流動性時段不開新倉）
-            allow_new_entries = now_dt.hour in SCALP_ALLOWED_HOURS_TWN
-            if not allow_new_entries:
-                print(f"  [SKIP] 時間封鎖 ({now_dt.hour:02d}:xx TWN)，不開新倉")
+                       "max_pos": 0, "cooldown": 0, "duplicate": 0, "btc_bias": 0}
 
             # Gate 2-8 靜態過濾，收集通過的候選
             candidates = []
             for sig in signals:
-                if not allow_new_entries:
-                    skipped["time_block"] += 1
-                    continue
                 sym = sig["symbol"]
                 if len(account.positions) >= SCALP_MAX_POSITIONS:
                     skipped["max_pos"] += 1
