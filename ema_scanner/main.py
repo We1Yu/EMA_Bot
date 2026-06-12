@@ -15,8 +15,8 @@ from pathlib import Path
 from bingx        import get_contracts, get_klines
 from scanner      import scan_symbol
 from scorer       import score_setup, passes_threshold
-from discord_bot  import send_setup_alerts, send_no_setup_summary
-from paper_trader import PaperTrader
+from discord_bot  import send_setup_alerts, send_shutdown_report
+from paper_trader import PaperTrader, PAPER_FILE
 from indicators   import ema_snapshot
 
 # ── 常數設定 ──────────────────────────────────────────────
@@ -25,17 +25,127 @@ SIGNALS_LOG     = Path(__file__).parent / "signals_log.json"
 SIGNALS_JSONL   = Path(__file__).parent / "signals_history.jsonl"
 TRADE_CSV       = Path(__file__).parent / "trade_history.csv"
 EQUITY_JSONL    = Path(__file__).parent / "equity_history.jsonl"
+SESSIONS_DIR    = Path(__file__).parent / "sessions"
 SCAN_INTERVAL   = 60 * 60          # 60 分鐘（秒）
 DEDUP_WINDOW    = 4 * 60 * 60      # 4 小時去重窗口（秒）
 KLINES_4H_LIMIT = 250   # EMA200 需要足夠歷史資料（至少 200 根）
 KLINES_1H_LIMIT = 100   # EMA60 需要 60 根，RSI/MACD 需要 35+ 根
 TW_TZ           = timezone(timedelta(hours=8))
 
+BOT_START_TIME: float = 0.0
+
 TRADE_CSV_FIELDS = [
     "symbol", "direction", "score", "entry", "exit",
     "stop_loss", "target1", "target2", "contracts", "pnl",
     "reason", "full_close", "open_time", "close_time",
 ]
+
+
+def _fmt_tw(ts: float) -> str:
+    return datetime.fromtimestamp(ts, tz=TW_TZ).strftime("%Y/%m/%d %H:%M:%S")
+
+
+def _duration_str(start: float, stop: float) -> str:
+    secs = int(stop - start)
+    h, rem = divmod(secs, 3600)
+    m, s   = divmod(rem, 60)
+    if h > 0:
+        return f"{h}h {m}m"
+    if m > 0:
+        return f"{m}m {s}s"
+    return f"{s}s"
+
+
+def archive_session(start_ts: float, stop_ts: float, trader: PaperTrader) -> None:
+    """關機時將本次交易紀錄匯出為 Excel，存至 sessions/<start_time>.xlsx。"""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+
+    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    file_name = datetime.fromtimestamp(start_ts, tz=TW_TZ).strftime("%Y-%m-%d_%H-%M") + ".xlsx"
+    dest = SESSIONS_DIR / file_name
+
+    wb = openpyxl.Workbook()
+
+    # ── 分頁 1：交易明細 ────────────────────────────────────────
+    ws = wb.active
+    ws.title = "交易明細"
+
+    col_map = [
+        ("開倉時間",   "open_ms"),
+        ("平倉時間",   "close_ms"),
+        ("交易對",     "symbol"),
+        ("方向",       "direction"),
+        ("策略",       "strategy"),
+        ("評分",       "score"),
+        ("進場價",     "entry"),
+        ("出場價",     "exit"),
+        ("止損",       "stop_loss"),
+        ("TP1",        "target1"),
+        ("TP2",        "target2"),
+        ("張數",       "contracts"),
+        ("損益 $",     "pnl"),
+        ("出場原因",   "reason"),
+        ("完整平倉",   "full_close"),
+    ]
+
+    hdr_fill = PatternFill("solid", fgColor="1F3864")
+    hdr_font = Font(bold=True, color="FFFFFF")
+
+    for col_idx, (label, _) in enumerate(col_map, 1):
+        cell = ws.cell(row=1, column=col_idx, value=label)
+        cell.fill = hdr_fill
+        cell.font = hdr_font
+        cell.alignment = Alignment(horizontal="center")
+
+    for row_idx, t in enumerate(trader.trade_history, 2):
+        pnl = t.get("pnl", 0)
+        row_fill = PatternFill("solid", fgColor="C6EFCE" if pnl >= 0 else "FFC7CE")
+        for col_idx, (_, key) in enumerate(col_map, 1):
+            val = t.get(key)
+            if key in ("open_ms", "close_ms") and isinstance(val, (int, float)):
+                val = datetime.fromtimestamp(val / 1000, tz=TW_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            cell = ws.cell(row=row_idx, column=col_idx, value=val)
+            cell.fill = row_fill
+            if key == "pnl":
+                cell.number_format = '+#,##0.00;-#,##0.00'
+
+    for col_idx in range(1, len(col_map) + 1):
+        ws.column_dimensions[get_column_letter(col_idx)].auto_size = True
+
+    ws.freeze_panes = "A2"
+
+    # ── 分頁 2：摘要 ────────────────────────────────────────────
+    stats = trader.get_stats()
+    ws2 = wb.create_sheet("摘要")
+    summary_rows = [
+        ("開機時間",   _fmt_tw(start_ts)),
+        ("關機時間",   _fmt_tw(stop_ts)),
+        ("執行時長",   _duration_str(start_ts, stop_ts)),
+        ("初始資金",   f"${trader.initial_balance:,.2f}"),
+        ("最終餘額",   f"${stats.get('current_balance', 0):,.2f}"),
+        ("總損益",     f"${stats.get('total_pnl', 0):+,.2f}"),
+        ("報酬率",     f"{stats.get('total_return_pct', 0):+.2f}%"),
+        ("最大回撤",   f"{stats.get('max_drawdown_pct', 0):.2f}%"),
+        ("勝率",       f"{stats.get('win_rate_pct', 0):.1f}%"),
+        ("已平倉",     stats.get("full_closes", 0)),
+        ("勝",         stats.get("wins", 0)),
+        ("敗",         stats.get("losses", 0)),
+        ("獲利因子",   stats.get("profit_factor")),
+    ]
+    key_font = Font(bold=True)
+    key_fill = PatternFill("solid", fgColor="DDEEFF")
+    for r, (label, val) in enumerate(summary_rows, 1):
+        k = ws2.cell(row=r, column=1, value=label)
+        k.font = key_font
+        k.fill = key_fill
+        ws2.cell(row=r, column=2, value=val)
+    ws2.column_dimensions["A"].width = 14
+    ws2.column_dimensions["B"].width = 22
+
+    wb.save(dest)
+    print(f"[ARCHIVE] 交易紀錄已存至 sessions/{file_name}")
 
 
 # ── 去重狀態管理 ──────────────────────────────────────────
@@ -286,43 +396,73 @@ def run_scan() -> None:
         send_setup_alerts(qualified)
         print(f"[完成] 發送 {len(qualified)} 個訊號")
     else:
-        send_no_setup_summary(total, converging)
         print(f"[完成] 無達標訊號（收斂中：{converging}）")
 
 
 # ── 排程主迴圈 ────────────────────────────────────────────
 def main() -> None:
+    global BOT_START_TIME
+    BOT_START_TIME = time.time()
+
     print("=" * 50)
     print("  EMA Convergence Scanner 啟動")
     print("  掃描間隔：60 分鐘")
     print("  額外觸發：4H K線收盤時")
     print("=" * 50)
 
-    # 立刻執行一次
-    run_scan()
+    try:
+        # 立刻執行一次
+        run_scan()
 
-    last_scan_ts   = time.time()
-    last_4h_window = datetime.now(timezone.utc).hour // 4  # 當前所屬 4H 窗口
+        last_scan_ts   = time.time()
+        last_4h_window = datetime.now(timezone.utc).hour // 4  # 當前所屬 4H 窗口
 
-    while True:
-        time.sleep(30)  # 每 30 秒檢查一次觸發條件
+        while True:
+            time.sleep(30)  # 每 30 秒檢查一次觸發條件
 
-        now_utc       = datetime.now(timezone.utc)
-        current_4h_w  = now_utc.hour // 4
-        elapsed       = time.time() - last_scan_ts
+            now_utc       = datetime.now(timezone.utc)
+            current_4h_w  = now_utc.hour // 4
+            elapsed       = time.time() - last_scan_ts
 
-        # 觸發條件一：超過 60 分鐘
-        triggered_by_interval = elapsed >= SCAN_INTERVAL
+            # 觸發條件一：超過 60 分鐘
+            triggered_by_interval = elapsed >= SCAN_INTERVAL
 
-        # 觸發條件二：進入新的 4H 窗口（K線剛收盤）
-        triggered_by_4h_close = current_4h_w != last_4h_window
+            # 觸發條件二：進入新的 4H 窗口（K線剛收盤）
+            triggered_by_4h_close = current_4h_w != last_4h_window
 
-        if triggered_by_interval or triggered_by_4h_close:
-            if triggered_by_4h_close:
-                print(f"[觸發] 新 4H K線收盤（UTC 窗口 {current_4h_w * 4:02d}:00）")
-            last_4h_window = current_4h_w
-            last_scan_ts   = time.time()
-            run_scan()
+            if triggered_by_interval or triggered_by_4h_close:
+                if triggered_by_4h_close:
+                    print(f"[觸發] 新 4H K線收盤（UTC 窗口 {current_4h_w * 4:02d}:00）")
+                last_4h_window = current_4h_w
+                last_scan_ts   = time.time()
+                run_scan()
+
+    except KeyboardInterrupt:
+        print("\nStopped by user.")
+    finally:
+        stop_ts = time.time()
+        try:
+            trader = PaperTrader.load(PAPER_FILE)
+            archive_session(BOT_START_TIME, stop_ts, trader)
+        except Exception as e:
+            print(f"[ARCHIVE] 匯出失敗：{e}")
+
+        try:
+            trader = PaperTrader.load(PAPER_FILE)
+            session_trades = [
+                t for t in trader.trade_history
+                if t.get("open_ms", 0) >= BOT_START_TIME * 1000
+            ]
+            send_shutdown_report(
+                stats          = trader.get_stats(),
+                session_trades = session_trades,
+                start_time_str = _fmt_tw(BOT_START_TIME),
+                stop_time_str  = _fmt_tw(stop_ts),
+                duration_str   = _duration_str(BOT_START_TIME, stop_ts),
+            )
+            print("Discord 關閉報告已發送")
+        except Exception as e:
+            print(f"[Discord] 關閉報告發送失敗：{e}")
 
 
 if __name__ == "__main__":

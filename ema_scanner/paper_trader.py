@@ -145,6 +145,7 @@ class PaperTrader:
         return {
             "symbol":     pos.symbol,
             "direction":  pos.direction,
+            "strategy":   pos.strategy,
             "entry":      round(pos.entry_price, 8),
             "exit":       round(exit_price,      8),
             "stop_loss":  round(pos.stop_loss,   8),

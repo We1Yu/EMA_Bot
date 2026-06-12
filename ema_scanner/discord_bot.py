@@ -267,3 +267,80 @@ def send_setup_alerts(results_with_scores: list[tuple[dict, float]]) -> None:
 
 def send_no_setup_summary(total: int, converging: int) -> None:
     send_embeds([build_no_setup_embed(total, converging)])
+
+
+def build_shutdown_embed(
+    stats: dict,
+    session_trades: list[dict],
+    start_time_str: str,
+    stop_time_str: str,
+    duration_str: str,
+) -> dict:
+    now_tw   = _now_tw()
+    date     = now_tw.strftime("%Y/%m/%d")
+    time_str = now_tw.strftime("%H:%M TWN")
+
+    full_session   = [t for t in session_trades if t.get("full_close")]
+    wins_session   = [t for t in full_session if t["pnl"] > 0]
+    losses_session = [t for t in full_session if t["pnl"] <= 0]
+    pnl_session    = round(sum(t["pnl"] for t in session_trades), 2)
+    win_rate       = (
+        round(len(wins_session) / len(full_session) * 100, 1) if full_session else 0
+    )
+    sl_count  = sum(1 for t in full_session if t.get("reason") == "SL")
+    tp1_count = sum(1 for t in session_trades if t.get("reason") == "TP1")
+    tp2_count = sum(1 for t in full_session if t.get("reason") == "TP2")
+
+    emoji = "📈" if pnl_session >= 0 else "📉"
+
+    fields = [
+        {"name": "📅 日期",           "value": date,                                                                             "inline": True},
+        {"name": "💰 帳戶餘額",       "value": f"${stats['current_balance']:,.2f}",                                              "inline": True},
+        {"name": "🟢 開機時間",       "value": start_time_str,                                                                   "inline": True},
+        {"name": "🔴 關機時間",       "value": stop_time_str,                                                                    "inline": True},
+        {"name": "⏱️ 執行時長",      "value": duration_str,                                                                     "inline": True},
+        {"name": "📊 本次損益",       "value": f"${pnl_session:+,.2f}",                                                          "inline": True},
+        {"name": "📉 最大回撤",       "value": f"{stats.get('max_drawdown_pct', 0):.2f}%",                                       "inline": True},
+        {"name": "🏆 本次勝率",       "value": f"{win_rate:.1f}%  ({len(wins_session)}勝 / {len(losses_session)}敗)",            "inline": True},
+        {"name": "📋 已平倉",         "value": str(len(full_session)),                                                           "inline": True},
+        {"name": "🎯 出場統計",       "value": f"SL {sl_count}  TP1 {tp1_count}  TP2 {tp2_count}",                              "inline": False},
+    ]
+
+    by_strategy: dict[str, dict] = {}
+    for t in full_session:
+        strat = t.get("strategy") or "未知"
+        if strat not in by_strategy:
+            by_strategy[strat] = {"trades": 0, "wins": 0, "pnl": 0.0}
+        by_strategy[strat]["trades"] += 1
+        by_strategy[strat]["pnl"]   += t["pnl"]
+        if t["pnl"] > 0:
+            by_strategy[strat]["wins"] += 1
+
+    if by_strategy:
+        lines = []
+        for strat, s in sorted(by_strategy.items(), key=lambda x: -x[1]["pnl"]):
+            wr = round(s["wins"] / s["trades"] * 100, 1) if s["trades"] else 0
+            lines.append(f"`{strat}` {s['trades']}筆  ${s['pnl']:+.2f}  勝率{wr}%")
+        fields.append({
+            "name":   "📂 各策略統計",
+            "value":  "\n".join(lines),
+            "inline": False,
+        })
+
+    return {
+        "title":  f"{emoji} EMA Scanner 關閉報告 — {date}",
+        "color":  0x00C851 if pnl_session >= 0 else 0xFF4444,
+        "fields": fields,
+        "footer": {"text": f"EMA Convergence Scanner | 關閉時間 {time_str}"},
+    }
+
+
+def send_shutdown_report(
+    stats: dict,
+    session_trades: list[dict],
+    start_time_str: str,
+    stop_time_str: str,
+    duration_str: str,
+) -> None:
+    embed = build_shutdown_embed(stats, session_trades, start_time_str, stop_time_str, duration_str)
+    send_embeds([embed])
