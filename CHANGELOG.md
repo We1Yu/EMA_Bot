@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.4.0] - 2026-06-16
+
+### 新增
+- **回測框架**：`backtest_regime.py` 全量虛擬交易模擬，支援 Regime Filter 開啟 / 關閉對照；`fetch_data.py` BingX 分頁 K 線資料下載器（帶本機快取）
+- **`analyze_trades.py`**：交易事件分析工具，自動區分「一般行情」（勝率 41.2%）與「事件驅動」（多方向同時止損）虧損，找出集中虧損根因
+- **`STRUCTURE_BREAKOUT` 策略**：偵測歷史結構高低點突破後回測確認，要求 ≥ 2 根收盤確認突破（避免假突破），`scorer.py` 新增 `_score_structure_breakout()` 基礎分 4.0
+- **`indicators.py` 新增 `calc_adx()`**：ADX 趨勢強度指標，用於濾除震盪盤
+
+### 調整
+- **策略勝率優化**（v2 → v6）
+  - `EMA_PULLBACK` 新增 ADX > 20 趨勢強度濾網，封鎖橫盤進場
+  - `EMA_PULLBACK` / `STRUCTURE_BREAKOUT` 新增 4H RSI 動能濾網（多單 RSI 46–76、空單 24–54），過濾超買追高 / 動能已死信號
+  - 新增 4H EMA15 > EMA30 短期對齊濾網（多單）
+  - 勝率：26.5% → 32.3%；最大回撤：20.67% → 15.95%
+- **同向持倉上限 `max_same_dir=2`**：同一方向最多同時持有 2 倉，針對事件驅動分析發現 34% 虧損來自 6 個時間點同向 12 倉齊止損，實施後最大回撤進一步從 15.95% 降至 8.20%
+- **最大持倉數 `max_positions=4`**：防止相關性過高的同時開倉
+- **評分門檻 `MIN_SCORE`**：6.0 → 7.5，提升訊號品質
+- **`bingx.py` 新增 `get_klines_paginated()`**：支援 `endTime` 參數分頁拉取長期歷史 K 線
+- **`.gitignore`** 新增排除 `ema_scanner/data/`（K 線快取）與 `ema_scanner/trade_records/`（平倉紀錄）
+
+### 移除
+- **`start.bat`**：啟動腳本已無使用需求，完整移除
+
 ## [1.3.1] - 2026-06-16
 
 ### 移除

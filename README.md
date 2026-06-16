@@ -4,7 +4,7 @@ BingX USDT-M 永續合約虛擬交易機器人。
 
 | 系統 | 週期 | 策略 | 掃描頻率 |
 |------|------|------|----------|
-| EMA Scanner | 4 小時 / 1 小時 | EMA 群收斂突破 / EMA30 回測反彈 | 每 60 分鐘 |
+| EMA Scanner | 4 小時 / 1 小時 | EMA 群收斂突破 / EMA30 回測反彈 / 結構突破回測 | 每 60 分鐘 |
 
 安裝與啟動說明請見 [INSTALL.md](INSTALL.md)。
 
@@ -14,15 +14,17 @@ BingX USDT-M 永續合約虛擬交易機器人。
 
 ```
 Trade_Bot/
-├── start.bat                    # 一鍵啟動 EMA Scanner + 儀表板
 └── ema_scanner/
     ├── main.py                  # 主程式（掃描排程 + 持倉管理）
     ├── web_app.py               # Flask 儀表板後端（port 5001）
-    ├── scanner.py               # EMA_CONVERGENCE / EMA_PULLBACK 邏輯
-    ├── scorer.py                # 訊號評分（0–10 分）
-    ├── paper_trader.py          # 虛擬帳號
-    ├── indicators.py            # 技術指標
-    ├── bingx.py                 # BingX REST API 封裝
+    ├── scanner.py               # EMA_CONVERGENCE / EMA_PULLBACK / STRUCTURE_BREAKOUT 邏輯
+    ├── scorer.py                # 訊號評分（0–10 分，門檻 7.5）
+    ├── paper_trader.py          # 虛擬帳號（最大持倉 4，同向上限 2）
+    ├── indicators.py            # 技術指標（EMA / ATR / ADX）
+    ├── bingx.py                 # BingX REST API 封裝（含分頁拉取）
+    ├── fetch_data.py            # 歷史 K 線下載器（帶本機快取）
+    ├── backtest_regime.py       # 全量回測框架（Regime Filter 對照）
+    ├── analyze_trades.py        # 交易事件分析（一般 vs 事件驅動分類）
     ├── discord_bot.py           # Discord Webhook 通知
     └── templates/index.html     # 前端儀表板 UI
 ```
@@ -41,7 +43,7 @@ Trade_Bot/
 
 當 BTC 4H EMA15 < EMA60（空頭環境）時，**封鎖所有山寨幣多單**；BTC / ETH 主流幣不受此限制。
 
-### 兩種策略
+### 三種策略
 
 **EMA_CONVERGENCE**（4H 主圖 + 1H 確認）
 
@@ -64,6 +66,8 @@ Trade_Bot/
 |------|------|
 | 4H EMA200 大方向 | 多頭 / 空頭 |
 | 4H EMA60 方向 | 上升做多 / 下降做空 |
+| 4H RSI 動能 | 多單：RSI 46–76；空單：RSI 24–54 |
+| ADX | > 20（確認趨勢，排除震盪盤） |
 | 1H EMA 排列 | 多單：EMA15 > EMA30；空單：EMA15 < EMA30 |
 | 1H 收盤位置 | 在 EMA60 正確側 |
 | 前根觸碰 EMA30 | 主流幣距離 ≤ 0.7%；山寨幣距離 ≤ 1.2% |
@@ -72,6 +76,18 @@ Trade_Bot/
 | 1H RSI（多單）| ≥ 40（確認動能未死；空單免檢） |
 
 停損：多單 = min(前根低點, EMA30) − 1.0 ATR；空單 = max(前根高點, EMA30) + 1.0 ATR
+
+**STRUCTURE_BREAKOUT**（4H 結構突破）
+
+| 條件 | 說明 |
+|------|------|
+| 4H EMA200 大方向 | 多頭 / 空頭 |
+| 4H RSI 動能 | 多單：RSI 46–76；空單：RSI 24–54 |
+| 結構突破 | 突破近期歷史高低點 |
+| 確認根數 | ≥ 2 根 4H K 線收盤確認突破 |
+| 回測進場 | 價格回測結構位附近 |
+
+停損：突破前結構高低點反側 ± 1.0 ATR
 
 ### 出場規則
 
@@ -83,7 +99,7 @@ Trade_Bot/
 
 ### 評分系統（0–10 分）
 
-達標門檻：**6.0 分**（低於此分不推播、不開倉）
+達標門檻：**7.5 分**（低於此分不推播、不開倉）
 
 **EMA_CONVERGENCE 評分：**
 
@@ -116,12 +132,25 @@ Trade_Bot/
 | EMA200 大方向通過 | — | +1.0 |
 | 歐美盤加成（TWN 15–22 時）| — | +1.0 |
 
+**STRUCTURE_BREAKOUT 評分：**
+
+| 項目 | 條件 | 得分 |
+|------|------|------|
+| 結構突破基礎分 | — | +4.0 |
+| 量能倍數 | ≥ 2.0× | +2.0 |
+| | ≥ 1.5× | +1.0 |
+| K棒實體比 | ≥ 70% | +1.5 |
+| | ≥ 55% | +0.5 |
+| 歐美盤加成（TWN 15–22 時）| — | +1.0 |
+
 ### 虛擬帳號參數
 
 | 參數 | 預設值 |
 |------|--------|
 | 初始本金 | $10,000 |
 | 每筆風險 | 2% |
+| 最大同時持倉數 | 4 |
+| 同向持倉上限 | 2 |
 
 ---
 
