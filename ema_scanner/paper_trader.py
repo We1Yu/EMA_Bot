@@ -11,8 +11,9 @@ from pathlib import Path
 
 TW_TZ         = timezone(timedelta(hours=8))
 PAPER_FILE    = Path(__file__).parent / "paper_account.json"
-RISK_PCT      = 0.02   # 每筆風險 2% 資金
-MAX_POSITIONS = 4      # 同時最多持倉數（防止同向相關性虧損）
+RISK_PCT          = 0.02   # 每筆風險 2% 資金
+MAX_POSITIONS     = 4      # 同時最多持倉數
+MAX_SAME_DIR      = 2      # 同方向最多持倉數（限制相關性風險）
 
 
 @dataclass
@@ -34,11 +35,12 @@ class Position:
 
 class PaperTrader:
     def __init__(self, initial_balance: float = 10_000.0, risk_pct: float = RISK_PCT,
-                 max_positions: int = MAX_POSITIONS):
+                 max_positions: int = MAX_POSITIONS, max_same_dir: int = MAX_SAME_DIR):
         self.initial_balance = initial_balance
         self.balance         = initial_balance
         self.risk_pct        = risk_pct
         self.max_positions   = max_positions
+        self.max_same_dir    = max_same_dir
         self.positions: dict[str, Position] = {}
         self.trade_history:  list[dict]     = []
 
@@ -48,6 +50,10 @@ class PaperTrader:
         if symbol in self.positions:
             return False
         if len(self.positions) >= self.max_positions:
+            return False
+        direction = result["direction"]
+        same_dir = sum(1 for p in self.positions.values() if p.direction == direction)
+        if same_dir >= self.max_same_dir:
             return False
 
         lvl   = result["levels"]

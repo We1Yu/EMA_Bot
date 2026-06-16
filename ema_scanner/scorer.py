@@ -29,6 +29,8 @@ def score_setup(result: dict, bar_time_ms: int | None = None) -> float:
         return _score_convergence(result, bar_time_ms)
     if strategy == "STRUCTURE_BREAKOUT":
         return _score_structure_breakout(result, bar_time_ms)
+    if strategy in ("PINBAR_AT_EMA", "EMA_CROSS_1H", "EMA60_BOUNCE"):
+        return _score_ema60_bounce(result, bar_time_ms)
     return _score_momentum(result, bar_time_ms)
 
 
@@ -101,6 +103,30 @@ def _score_structure_breakout(result: dict, bar_time_ms: int | None = None) -> f
 
     if result.get("ema200_clear"):
         score += 1.0
+
+    score += _bonus_indicators(result)
+    score += _session_bonus(bar_time_ms)
+    return round(min(score, 10.0), 1)
+
+
+def _score_ema60_bounce(result: dict, bar_time_ms: int | None = None) -> float:
+    """EMA60_BOUNCE 評分（基礎分 4.0，深度回調到強支撐反彈，品質高）"""
+    score = 4.0
+    vol  = result["vol_ratio"]
+    body = result["confirm_1h"]["body_ratio"]
+
+    # 量能
+    if vol >= 2.5:    score += 2.5
+    elif vol >= 2.0:  score += 2.0
+    elif vol >= 1.5:  score += 1.0
+
+    # 實體比（4H 反彈K棒強度）
+    if body >= 0.75:   score += 2.0
+    elif body >= 0.65: score += 1.5
+    elif body >= 0.55: score += 0.5
+
+    if result.get("ema200_clear"):
+        score += 0.5
 
     score += _bonus_indicators(result)
     score += _session_bonus(bar_time_ms)
