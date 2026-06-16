@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1] - 2026-06-16
+
+### 移除
+- **高頻 Scalp Bot 全面移除**：刪除 `crypto_screener/` 整個資料夾（主程式、儀表板、評分系統、掃描器、虛擬帳號、Discord 通知、所有設定與資料檔）
+- **EMA Scanner 移除 OI/多空比指標**：刪除 `get_oi_history`、`get_long_short_ratio` API 及 `OI_LS_SIGNAL` 策略（評分、Discord 通知、儀表板顯示）
+- **`start.bat`** 移除已停用的 Scalp Bot 啟動指令
+
 ## [1.3.0] - 2026-06-12
 
 ### 資安修正

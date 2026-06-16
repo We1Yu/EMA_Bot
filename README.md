@@ -1,13 +1,10 @@
 # Trade Bot
 
-BingX USDT-M 永續合約虛擬交易機器人，包含兩套獨立系統：
+BingX USDT-M 永續合約虛擬交易機器人。
 
 | 系統 | 週期 | 策略 | 掃描頻率 |
 |------|------|------|----------|
-| 高頻機器人 | 5 分鐘 | MA 群聚突破 / RSI 反彈 / EMA 交叉 / 量能爆發 | 每 60 秒 |
 | EMA Scanner | 4 小時 / 1 小時 | EMA 群收斂突破 / EMA30 回測反彈 | 每 60 分鐘 |
-
-兩套系統共用同一個網頁儀表板，帳號與持倉完全獨立。
 
 安裝與啟動說明請見 [INSTALL.md](INSTALL.md)。
 
@@ -17,164 +14,18 @@ BingX USDT-M 永續合約虛擬交易機器人，包含兩套獨立系統：
 
 ```
 Trade_Bot/
-├── start.bat                    # 一鍵啟動高頻機器人 + 儀表板
-├── crypto_screener/             # 高頻機器人
-│   ├── main_scalp.py            # 主程式（掃描 + 持倉管理）
-│   ├── web_app.py               # Flask 儀表板後端
-│   ├── scanner.py               # 掃描邏輯（多策略）
-│   ├── scoring.py               # 訊號評分系統（0–150 基礎分 + 加成）
-│   ├── paper_account.py         # 虛擬帳號（持倉 / 停損停利 / 歷史）
-│   ├── filters.py               # 進場過濾條件
-│   ├── indicators.py            # 技術指標（RSI / ADX / BBW / ATR）
-│   ├── bingx_source.py          # BingX REST API 封裝
-│   ├── config.py                # 所有可調參數
-│   ├── discord_alert.py         # Discord Webhook 通知
-│   └── templates/index.html     # 前端儀表板 UI
-└── ema_scanner/                 # EMA Scanner（獨立系統）
-    ├── main.py                  # 主程式
+├── start.bat                    # 一鍵啟動 EMA Scanner + 儀表板
+└── ema_scanner/
+    ├── main.py                  # 主程式（掃描排程 + 持倉管理）
+    ├── web_app.py               # Flask 儀表板後端（port 5001）
     ├── scanner.py               # EMA_CONVERGENCE / EMA_PULLBACK 邏輯
-    ├── scorer.py                # 訊號評分
+    ├── scorer.py                # 訊號評分（0–10 分）
     ├── paper_trader.py          # 虛擬帳號
     ├── indicators.py            # 技術指標
-    ├── bingx.py                 # BingX API 封裝
-    └── discord_bot.py           # Discord 通知
+    ├── bingx.py                 # BingX REST API 封裝
+    ├── discord_bot.py           # Discord Webhook 通知
+    └── templates/index.html     # 前端儀表板 UI
 ```
-
----
-
-## 高頻機器人
-
-### 運作流程
-
-```
-每 60 秒  ──▶  掃描 ~700 種 BingX 永續合約
-                │
-                ▼
-            計算 5m K 線指標 → 評分 → 取高分訊號
-                │
-                ▼
-            BTC 趨勢濾網 → 交易時段檢查 → 進場品質門檻
-                │
-                ▼
-            開啟虛擬倉位（每筆風險 1% 資金）
-                │
-每 12 秒  ──▶  抓取最新成交價 → 檢查停損 / 停利
-```
-
-同一幣種出場後 **5 分鐘** 冷卻，不重複進場。
-
-### BTC 趨勢濾網
-
-| 條件 | 動作 |
-|------|------|
-| BTC 5m 收盤 > MA60 | BTC 偏多，只開多單 |
-| BTC 5m 收盤 < MA60 | BTC 偏空，只開空單 |
-| BTC ADX > 50 | 極端波動，暫停所有新倉 |
-
-### 交易時段限制（台灣時間）
-
-僅在以下時段開新倉，其餘時間不進場（已持倉繼續管理）：
-
-- **15:00–23:00**（倫敦盤 + 紐約盤）
-- **00:00–03:00**（紐約尾盤）
-
-封鎖：09:00–14:00 TWN（亞洲低流動性死區）
-
-### 幣種黑名單
-
-長期虧損幣種永久封鎖：
-`BLUR-USDT`、`WAVES-USDT`、`IOST-USDT`、`ASTR-USDT`、`CRV-USDT`、`SPX-USDT`
-
-### 四種進場策略
-
-#### 1. MA_BREAKOUT — MA 群聚突破
-
-- MA15 / MA30 / MA45 / MA60 緊密群聚（價差 < 1.5%）
-- 價格放量向上突破（量能 ≥ 5 根均量 × 1.5）
-- K 棒實體 ≥ 60%，RSI 45–75，ADX ≥ 20
-- 週線站上 20 週均線（趨勢確認）
-- 5 個子指標至少 3 個同時有效（RSI 區間 / BBW 壓縮 / ADX 強度 / 量能爆發 / K棒實體）
-
-SHORT 版本為完全對稱的跌破邏輯，空單 RSI 區間為 25–55。
-
-#### 2. RSI_BOUNCE — RSI 超賣 / 超買反彈
-
-- LONG：RSI ≤ 33 且 RSI 由低翻揚（前根 < 當根），K 棒收陽
-- SHORT：RSI ≥ 67 且 RSI 由高翻落（前根 > 當根），K 棒收陰
-- 量能確認：成交量 ≥ 5 根均值 × 1.5
-
-#### 3. EMA_CROSS — 快慢線交叉
-
-- 快線 EMA9 / 慢線 EMA21
-- LONG：EMA9 上穿 EMA21；SHORT：EMA9 下穿 EMA21
-- RSI 42–58（中性動能確認，避免追高殺低）
-- 量能確認：成交量 ≥ 5 根均值 × 1.5
-- ADX > 20 且方向一致時額外加分
-
-#### 4. VOL_SPIKE — 量能爆發
-
-- 成交量 ≥ 20 根均量 × 3.5
-- K 棒實體 ≥ 55%
-- LONG：收盤位置 > K棒範圍 70%；SHORT：收盤位置 < K棒範圍 30%
-
-### 出場規則（依策略分組）
-
-| 策略 | SL | TP1 | TP2 | TP3 |
-|------|-----|-----|-----|-----|
-| MA_BREAKOUT | ± 2.0 × ATR，全倉出場 | ± 3.0 × ATR，出場 30%，SL 移至進場價 | ± 4.5 × ATR，出場 40%，SL 移至 TP1 | ± 6.0 × ATR，剩餘 30% 全出 |
-| RSI_BOUNCE | ± 1.2 × ATR，全倉出場 | ± 1.8 × ATR，出場 30%，SL 移至進場價 | ± 2.8 × ATR，出場 40%，SL 移至 TP1 | ± 3.8 × ATR，剩餘 30% 全出 |
-| EMA_CROSS | ± 1.5 × ATR，全倉出場 | ± 2.0 × ATR，出場 30%，SL 移至進場價 | ± 3.0 × ATR，出場 40%，SL 移至 TP1 | ± 4.0 × ATR，剩餘 30% 全出 |
-| VOL_SPIKE | ± 1.5 × ATR，全倉出場 | ± 2.0 × ATR，出場 30%，SL 移至進場價 | ± 3.0 × ATR，出場 40%，SL 移至 TP1 | ± 4.0 × ATR，剩餘 30% 全出 |
-| SHUTDOWN | 程式關閉（Ctrl+C），所有持倉以現價強制平倉 | — | — | — |
-
-> 強制平倉的交易在儀表板以橘色 `SHUTDOWN ⚠️` badge 標註，在 Discord 報告以 🔴 圖示與 `⚠️ 強制平倉` 後綴區分。
-
-### 訊號評分（0–150 基礎分 + 加成）
-
-僅適用於 **MA_BREAKOUT** 策略，其他三種策略使用固定基礎分（RSI_BOUNCE 60 分 / EMA_CROSS 55 分 / VOL_SPIKE 65 分）並另有加成。
-
-| 分類 | 項目 | 滿分 |
-|------|------|------|
-| 核心突破品質 | MA 群聚緊密度 | 25 |
-| | 量能倍數 | 20 |
-| | K 棒實體比 | 10 |
-| 假突破過濾 | RSI 區間 | 15 |
-| | BBW 布林帶壓縮 | 10 |
-| | 收盤位置 | 10 |
-| 趨勢確認 | MA200 位置 | 15 |
-| | MA200 斜率 | 10 |
-| | ADX 強度 | 10 |
-| 市場背景 | 資金費率 | 10 |
-| | 24H 動能 | 10 |
-| | 週線趨勢 | 5 |
-| 加成項 | 雙時間框架共振 | +8 |
-| | Tier B 轉折 | +5 |
-| | RSI 穿越 50 | +3 |
-| | ADX 上升 | +3 |
-| | 負資金費率（多單）| +2 |
-
-**Tier A**：價格在 MA200 同側（趨勢延續）；**Tier B**：剛穿越 MA200（轉折訊號）。
-
-### 進場品質門檻
-
-| 參數 | 值 | 說明 |
-|------|-----|------|
-| 最低分數 | 70 | 低於此分不開倉 |
-| 最低 R:R | 1.5 | 風報比不足不開倉 |
-| 最大同時持倉 | 8 | 達上限停止開新倉 |
-| 進場漂移上限 | 0.8% | 訊號產生後現價偏移超過此值放棄 |
-
-### 虛擬帳號參數
-
-| 參數 | 預設值 |
-|------|--------|
-| 初始本金 | $1,000,000 |
-| 每筆風險 | 1% |
-| 最大同時持倉 | 8 |
-
-### 定期績效報告
-
-每 **6 小時** 自動發送一次 Discord 績效摘要，包含勝率、損益比、最大回撤等數據。
 
 ---
 
@@ -196,14 +47,14 @@ SHORT 版本為完全對稱的跌破邏輯，空單 RSI 區間為 25–55。
 
 | 條件 | 說明 |
 |------|------|
-| EMA 帶寬分位 | 收縮至近 50 根最低 25% 分位以下 |
-| 連續收縮根數 | ≥ 4 根（允許 1 次間斷） |
-| 4H 突破量能 | 主流幣 ≥ 1.3×；山寨幣 ≥ 2.0×（前 20 根均量） |
+| EMA 帶寬分位 | 收縮至近 50 根最低 35% 分位以下 |
+| 連續收縮根數 | ≥ 3 根 |
+| 4H 突破量能 | 主流幣 ≥ 1.3×；山寨幣 ≥ 1.5×（前 20 根均量） |
 | 4H RSI | < 75（排除超買追高） |
 | EMA200 大方向 | 多單：站上 EMA200；空單：站下 EMA200 |
 | 1H 收盤位置 | 在 EMA60 正確側 |
-| 1H EMA15/30 穿越 | 近 2 根內完成同向穿越 |
-| 1H K棒實體比 | ≥ 50% |
+| 1H EMA15/30 穿越 | 近 3 根內完成同向穿越 |
+| 1H K棒實體比 | ≥ 45% |
 
 停損：多單 = 收斂區域最低點 − 1.0 ATR；空單 = 最高點 + 1.0 ATR
 
@@ -276,15 +127,14 @@ SHORT 版本為完全對稱的跌破邏輯，空單 RSI 區間為 25–55。
 
 ## 網頁儀表板
 
-開啟 `http://localhost:5000`，每 **10 秒**自動刷新。
+開啟 `http://localhost:5001`，每 **10 秒**自動刷新。
 
 ### 功能
 
-- **啟動時間**：顯示機器人本次啟動的時間點
 - **帳戶統計**：餘額、總損益、勝率、最大回撤
 - **持倉中**：即時未實現損益、進 / 現價、停損停利進度
 - **最新掃描訊號**：Top 20 高分訊號
-- **成交紀錄**：可按「全部 / 獲利 / 虧損」篩選；強制平倉以橘色 `SHUTDOWN ⚠️` 標註
+- **成交紀錄**：可按「全部 / 獲利 / 虧損」篩選
 
 ---
 
@@ -292,13 +142,7 @@ SHORT 版本為完全對稱的跌破邏輯，空單 RSI 區間為 25–55。
 
 ### 環境變數（機密設定）
 
-機密資訊透過環境變數傳入，不寫入原始碼。在各機器人目錄建立 `.env` 檔案（`.gitignore` 已排除，不會上傳）：
-
-**`crypto_screener/.env`**
-```
-SCALP_DISCORD_WEBHOOK=https://discord.com/api/webhooks/...
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
-```
+機密資訊透過環境變數傳入，不寫入原始碼。在 `ema_scanner/` 目錄建立 `.env` 檔案（`.gitignore` 已排除，不會上傳）：
 
 **`ema_scanner/.env`**
 ```
@@ -307,44 +151,17 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 
 > Windows 使用者：`.env` 檔案內容需手動設定為系統環境變數（控制台 → 系統 → 進階系統設定 → 環境變數），或透過啟動腳本 `set VAR=value` 注入。
 
-### 交易參數
-
-所有參數集中在 `crypto_screener/config.py`：
-
-```python
-SCALP_SCAN_INTERVAL_SECS  = 60          # 掃描間隔（秒）
-SCALP_CHECK_INTERVAL_SECS = 12          # 持倉檢查間隔（秒）
-SCALP_COOLDOWN_SECS       = 300         # 同幣種冷卻時間（秒）
-SCALP_PAPER_INITIAL_BALANCE = 1_000_000.0
-SCALP_PAPER_RISK_PCT        = 0.01      # 每筆風險比例
-SCALP_DASHBOARD_PORT        = 5000
-
-SCALP_MIN_SCORE       = 70             # 最低進場分數
-SCALP_MIN_RR          = 1.5            # 最低風報比
-SCALP_MAX_POSITIONS   = 8              # 最大同時持倉數
-SCALP_MAX_ENTRY_DRIFT = 0.008          # 進場價漂移上限（0.8%）
-
-# 交易時段（台灣時間，允許開新倉的小時）
-SCALP_ALLOWED_HOURS_TWN = {15..23, 0, 1, 2, 3}
-
-# BTC 趨勢濾網
-BTC_MA_PERIOD = 60                     # 5m MA60
-BTC_ADX_PAUSE = 50                     # ADX > 50 暫停所有進場
-
-REPORT_INTERVAL_HOURS = 6              # Discord 績效報告間隔（小時）
-```
-
 ---
 
 ## 資料檔案
 
 | 檔案 | 內容 |
 |------|------|
-| `paper_account_scalp.json` | 虛擬帳號即時狀態（持倉 / 餘額） |
-| `scalp_state.json` | 最新掃描狀態（供儀表板讀取） |
-| `trades_scalp.jsonl` | 每筆出場紀錄（JSONL，永久累積） |
-| `trade_history_scalp.csv` | 完整成交紀錄（CSV，供分析用） |
-| `equity_history_scalp.jsonl` | 資產曲線快照 |
-| `signals_history_scalp.jsonl` | 所有掃描訊號歷史 |
-| `sessions_log.jsonl` | 每次啟動 / 關閉紀錄 |
-| `sessions/<時間>/` | 每次 session 結束後自動歸檔 |
+| `paper_account.json` | 虛擬帳號即時狀態（持倉 / 餘額） |
+| `state.json` | 最新掃描狀態（供儀表板讀取） |
+| `trade_history.csv` | 完整成交紀錄 |
+| `equity_history.jsonl` | 資產曲線快照 |
+| `signals_history.jsonl` | 所有掃描訊號歷史 |
+| `signals_log.json` | 當次啟動訊號快取 |
+| `trade_records/` | 每筆平倉紀錄與關機 Excel 報告 |
+| `sessions/` | 每次 session 結束後自動歸檔的 Excel |
