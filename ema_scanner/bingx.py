@@ -110,26 +110,7 @@ def get_ticker_price(symbol: str) -> float | None:
     return None
 
 
-def get_klines(symbol: str, interval: str, limit: int) -> list[dict] | None:
-    """
-    取得指定交易對的K線資料
-    interval: "1H" 或 "4H"
-    回傳列表，每筆包含 open/high/low/close/volume
-    """
-    url = f"{BASE_URL}/openApi/swap/v3/quote/klines"
-    params = {
-        "symbol": symbol,
-        "interval": interval.lower(),   # API 要求小寫（4h / 1h）
-        "limit": limit,
-    }
-    data = _get(url, params)
-    if not data:
-        return None
-
-    raw = data.get("data", [])
-    if not raw:
-        return None
-
+def _parse_candles(raw: list) -> list[dict]:
     candles = []
     for bar in raw:
         try:
@@ -139,11 +120,100 @@ def get_klines(symbol: str, interval: str, limit: int) -> list[dict] | None:
                 "low":    float(bar["low"]),
                 "close":  float(bar["close"]),
                 "volume": float(bar["volume"]),
-                "time":   int(bar["time"]),   # K線時間戳（毫秒）
+                "time":   int(bar["time"]),
             })
         except (KeyError, TypeError, ValueError):
             continue
+    return candles
 
-    # 依時間升序排列（最舊 → 最新）
+
+def get_klines(symbol: str, interval: str, limit: int) -> list[dict] | None:
+    """
+    取得指定交易對的K線資料
+    interval: "1H" 或 "4H"
+    回傳列表，每筆包含 open/high/low/close/volume
+    """
+    url = f"{BASE_URL}/openApi/swap/v3/quote/klines"
+    params = {
+        "symbol":   symbol,
+        "interval": interval.lower(),
+        "limit":    limit,
+    }
+    data = _get(url, params)
+    if not data:
+        return None
+
+    raw = data.get("data", [])
+    if not raw:
+        return None
+
+    candles = _parse_candles(raw)
     candles.sort(key=lambda x: x["time"])
     return candles if candles else None
+
+
+def get_klines_paginated(
+    symbol:      str,
+    interval:    str,
+    total:       int,
+    page_size:   int = 500,
+    delay:       float = 0.2,
+) -> list[dict] | None:
+    """
+    分頁向前抓取歷史 K 棒，突破單次 limit 上限。
+    從最新的 bar 往過去疊加，直到取得 total 根或沒有更早資料為止。
+
+    interval : "1H" / "4H"
+    total    : 目標根數（例如 2000）
+    page_size: 每次 API 呼叫根數（建議 ≤ 500）
+    delay    : 每次請求間隔秒數
+    """
+    url      = f"{BASE_URL}/openApi/swap/v3/quote/klines"
+    iv_lower = interval.lower()
+    all_bars: dict[int, dict] = {}   # time → bar（自動去重）
+
+    end_time_ms: int | None = None   # None = 從最新開始
+
+    while len(all_bars) < total:
+        params: dict = {
+            "symbol":   symbol,
+            "interval": iv_lower,
+            "limit":    page_size,
+        }
+        if end_time_ms is not None:
+            params["endTime"] = end_time_ms
+
+        data = _get(url, params)
+        if not data:
+            break
+
+        raw = data.get("data", [])
+        if not raw:
+            break
+
+        page = _parse_candles(raw)
+        if not page:
+            break
+
+        before = len(all_bars)
+        for bar in page:
+            all_bars[bar["time"]] = bar
+
+        # 沒有新資料表示已到最早
+        if len(all_bars) == before:
+            break
+
+        # 下一頁的結束時間 = 本頁最早的 bar 開盤時間 - 1ms
+        end_time_ms = min(b["time"] for b in page) - 1
+
+        if len(all_bars) >= total:
+            break
+
+        time.sleep(delay)
+
+    if not all_bars:
+        return None
+
+    candles = sorted(all_bars.values(), key=lambda x: x["time"])
+    # 只回傳最新的 total 根
+    return candles[-total:] if len(candles) > total else candles

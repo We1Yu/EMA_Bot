@@ -269,13 +269,14 @@ def next_4h_close_utc() -> datetime:
 def _print_open_detail(result: dict, score: float) -> None:
     """在 terminal 印出完整開倉邏輯"""
     strat_map = {
-        "EMA_CONVERGENCE": "EMA收斂突破",
-        "EMA_PULLBACK":    "EMA30回測",
-        "RSI_BOUNCE":      "RSI反彈",
-        "MACD_CROSS":      "MACD交叉",
-        "BB_BREAKOUT":     "BB突破",
-        "EMA_CROSS_FAST":  "EMA快叉",
-        "SWING_BREAK":     "擺幅突破",
+        "EMA_CONVERGENCE":    "EMA收斂突破",
+        "EMA_PULLBACK":       "EMA30回測",
+        "STRUCTURE_BREAKOUT": "結構突破回測",
+        "RSI_BOUNCE":         "RSI反彈",
+        "MACD_CROSS":         "MACD交叉",
+        "BB_BREAKOUT":        "BB突破",
+        "EMA_CROSS_FAST":     "EMA快叉",
+        "SWING_BREAK":        "擺幅突破",
     }
     strategy   = result.get("strategy", "?")
     strat_name = strat_map.get(strategy, strategy)
@@ -360,7 +361,7 @@ def run_scan() -> None:
         converging += 1
 
         # 評分
-        score = score_setup(result)
+        score = score_setup(result, result.get("candle_time_ms"))
         if not passes_threshold(score):
             continue
 
@@ -371,6 +372,8 @@ def run_scan() -> None:
 
         strat = result.get("strategy", "EMA_CONVERGENCE")
         print(f"  [訊號] {symbol}  {result['direction']}  [{strat}]  score={score}")
+        if len(trader.positions) >= trader.max_positions:
+            print(f"  [跳過] 已達持倉上限 {trader.max_positions}，{symbol} 排隊等待")
         qualified.append((result, score))
         mark_alerted(state, symbol)
         log_signal(result, score)

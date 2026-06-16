@@ -6,7 +6,7 @@
 """
 
 from indicators import (
-    calc_bandwidth, calc_atr,
+    calc_bandwidth, calc_atr, calc_adx,
     calc_rsi, calc_macd, calc_bollinger,
     ema_snapshot, body_ratio,
 )
@@ -27,14 +27,24 @@ EMA200_SKIP_PCT                = 0.01
 CROSS_LOOKBACK                 = 3     # 1H EMA15/30 穿越回溯根數（放寬，原 2）
 
 # ── EMA_PULLBACK 參數 ────────────────────────────────────────
-EMA_PULLBACK_TOUCH_PCT_ALT  = 0.012   # 山寨觸碰 EMA30 距離上限 1.2%
-EMA_PULLBACK_TOUCH_PCT_MAIN = 0.007   # 主流觸碰 EMA30 距離上限 0.7%
-EMA_PULLBACK_VOL_RATIO      = 1.3
+EMA_PULLBACK_TOUCH_PCT_ALT  = 0.008   # 山寨觸碰 EMA30 距離上限（收緊：1.2%→0.8%）
+EMA_PULLBACK_TOUCH_PCT_MAIN = 0.005   # 主流觸碰 EMA30 距離上限（收緊：0.7%→0.5%）
+EMA_PULLBACK_VOL_RATIO      = 1.8     # 量能門檻（收緊：1.3×→1.8×）
 EMA_PULLBACK_VOL_LOOKBACK   = 20
-EMA_PULLBACK_BODY           = 0.45
-EMA_PULLBACK_RSI_MIN        = 40      # 多單 1H RSI 下限
+EMA_PULLBACK_BODY           = 0.60    # 實體比下限（收緊：0.45→0.60）
+EMA_PULLBACK_RSI_MIN        = 48      # 多單 1H RSI 下限（收緊：40→48）
 
 RSI_PERIOD = 14
+
+# ── ADX 趨勢強度過濾 ─────────────────────────────────────────
+ADX_4H_MIN = 20   # 4H ADX 低於此值代表盤整，EMA_PULLBACK 不進場
+
+# ── STRUCTURE_BREAKOUT 參數 ──────────────────────────────────
+STRUCTURE_SWING_LOOKBACK  = 20    # 回溯多少根 1H bar 找 swing level
+STRUCTURE_BREAK_LOOKBACK  = 8     # 確認突破的最近幾根 bar
+STRUCTURE_RETEST_PCT      = 0.008 # 0.8% 容忍距離（回測貼近 swing level）
+STRUCTURE_VOL_RATIO       = 1.5   # 量能門檻
+STRUCTURE_BODY            = 0.50  # 實體比下限
 
 
 # ─────────────────────────────────────────────────────────────
@@ -363,12 +373,27 @@ def _scan_ema_pullback(
     if direction is None:
         return None
 
+    # 4H ADX > 20：只在有方向性的市場進場，過濾盤整
+    adx_vals = calc_adx(candles_4h, 14)
+    idx_4h   = len(candles_4h) - 1
+    adx_now  = adx_vals[idx_4h]
+    if adx_now is None or adx_now < ADX_4H_MIN:
+        return None
+
     # 4H EMA60 方向需與交易方向一致
-    idx_4h = len(candles_4h) - 1
+    e15_4h = emas_4h["ema15"][idx_4h]
+    e30_4h = emas_4h["ema30"][idx_4h]
     e60_4h_curr = emas_4h["ema60"][idx_4h]
     e60_4h_prev = emas_4h["ema60"][idx_4h - 1] if idx_4h >= 1 else None
-    if e60_4h_curr is None or e60_4h_prev is None:
+    if any(v is None for v in [e15_4h, e30_4h, e60_4h_curr, e60_4h_prev]):
         return None
+
+    # 4H 短線均線排列：LONG 需 EMA15 > EMA30，SHORT 需 EMA15 < EMA30
+    if direction == "LONG"  and e15_4h <= e30_4h:
+        return None
+    if direction == "SHORT" and e15_4h >= e30_4h:
+        return None
+
     ema60_4h_rising = e60_4h_curr > e60_4h_prev
     if direction == "LONG"  and not ema60_4h_rising:
         return None
@@ -457,15 +482,17 @@ def _scan_ema_pullback(
         actual_touch_pct = abs(prev["high"] - ema30_p) / ema30_p * 100
 
     conditions = [
-        {"name": "4H EMA200 大方向",       "value": "多頭" if direction == "LONG" else "空頭"},
-        {"name": "4H EMA60 方向一致",       "value": "上升" if ema60_4h_rising else "下降"},
-        {"name": "1H EMA 排列",            "value": f"EMA15({'>' if direction=='LONG' else '<'})EMA30 通過"},
-        {"name": "1H EMA60 正確側",        "value": "通過"},
-        {"name": "前根觸碰 EMA30",          "value": f"{actual_touch_pct:.2f}% ≤ {touch_pct*100:.1f}%"},
-        {"name": "當根反彈確認",            "value": "陽線確認" if direction == "LONG" else "陰線確認"},
-        {"name": "1H RSI（多單動能確認）",  "value": f"{round(rsi_now,1) if rsi_now else 'N/A'} {'≥ 40' if direction=='LONG' else '（空單免檢）'}"},
-        {"name": "量能",                   "value": f"{vol_ratio:.2f}× ≥ {EMA_PULLBACK_VOL_RATIO}×"},
-        {"name": "蠟燭實體比",             "value": f"{ratio*100:.0f}% ≥ {EMA_PULLBACK_BODY*100:.0f}%"},
+        {"name": "4H EMA200 大方向",           "value": "多頭" if direction == "LONG" else "空頭"},
+        {"name": "4H ADX 趨勢強度",            "value": f"{adx_now:.1f} ≥ {ADX_4H_MIN}"},
+        {"name": "4H EMA15/30 短線排列",       "value": f"EMA15({'>' if direction=='LONG' else '<'})EMA30 通過"},
+        {"name": "4H EMA60 方向一致",          "value": "上升" if ema60_4h_rising else "下降"},
+        {"name": "1H EMA 排列",               "value": f"EMA15({'>' if direction=='LONG' else '<'})EMA30 通過"},
+        {"name": "1H EMA60 正確側",           "value": "通過"},
+        {"name": "前根觸碰 EMA30",             "value": f"{actual_touch_pct:.2f}% ≤ {touch_pct*100:.1f}%"},
+        {"name": "當根反彈確認",               "value": "陽線確認" if direction == "LONG" else "陰線確認"},
+        {"name": "1H RSI（多單動能確認）",     "value": f"{round(rsi_now,1) if rsi_now else 'N/A'} {'≥ 48' if direction=='LONG' else '（空單免檢）'}"},
+        {"name": "量能",                      "value": f"{vol_ratio:.2f}× ≥ {EMA_PULLBACK_VOL_RATIO}×"},
+        {"name": "蠟燭實體比",                "value": f"{ratio*100:.0f}% ≥ {EMA_PULLBACK_BODY*100:.0f}%"},
     ]
 
     return {
@@ -487,6 +514,150 @@ def _scan_ema_pullback(
 
 
 # ─────────────────────────────────────────────────────────────
+# 策略三：結構突破回測（1H 主圖）
+# ─────────────────────────────────────────────────────────────
+
+def _scan_structure_breakout(
+    symbol: str,
+    candles_4h: list[dict], candles_1h: list[dict],
+    emas_4h: dict,          emas_1h: dict,
+) -> dict | None:
+    """
+    找到 1H 近期關鍵高低點被突破後的回測進場機會。
+    突破後回測該水平，並出現反彈/壓回確認才進場。
+    勝率比 EMA_PULLBACK 高的原因：進場點有結構支撐/壓力確認。
+    """
+    # 4H EMA200 大方向
+    direction = _trend_direction_4h(candles_4h, emas_4h)
+    if direction is None:
+        return None
+
+    # 4H EMA15 > EMA30（短線排列確認）
+    idx_4h = len(candles_4h) - 1
+    e15_4h = emas_4h["ema15"][idx_4h]
+    e30_4h = emas_4h["ema30"][idx_4h]
+    if e15_4h is None or e30_4h is None:
+        return None
+    if direction == "LONG"  and e15_4h <= e30_4h:
+        return None
+    if direction == "SHORT" and e15_4h >= e30_4h:
+        return None
+
+    # 4H ADX > 20：有方向性才進場
+    adx_vals = calc_adx(candles_4h, 14)
+    adx_now  = adx_vals[idx_4h]
+    if adx_now is None or adx_now < ADX_4H_MIN:
+        return None
+
+    idx = len(candles_1h) - 1
+    min_req = STRUCTURE_SWING_LOOKBACK + STRUCTURE_BREAK_LOOKBACK + 5
+    if idx < min_req:
+        return None
+
+    # swing zone：比「突破確認區」更早的一段歷史
+    s_start = idx - STRUCTURE_BREAK_LOOKBACK - STRUCTURE_SWING_LOOKBACK
+    s_end   = idx - STRUCTURE_BREAK_LOOKBACK
+    swing_zone  = candles_1h[s_start:s_end]
+    break_zone  = candles_1h[s_end:idx]    # 最近 break_lookback 根（不含當根）
+    curr        = candles_1h[idx]
+
+    if direction == "LONG":
+        swing_level = max(c["high"] for c in swing_zone)
+
+        # 近期有 K 棒收盤突破 swing high
+        if not any(c["close"] > swing_level for c in break_zone):
+            return None
+
+        # 當根回測：low 觸碰 swing_level（容忍 retest_pct）
+        if curr["low"] > swing_level * (1 + STRUCTURE_RETEST_PCT):
+            return None
+        # 當根收盤在 swing_level 上方（確認支撐）
+        if curr["close"] <= swing_level:
+            return None
+        # 陽線
+        if curr["close"] <= curr["open"]:
+            return None
+
+        recent = candles_1h[idx - STRUCTURE_BREAK_LOOKBACK: idx + 1]
+        sl_base = min(c["low"] for c in recent)
+
+    else:  # SHORT
+        swing_level = min(c["low"] for c in swing_zone)
+
+        if not any(c["close"] < swing_level for c in break_zone):
+            return None
+
+        if curr["high"] < swing_level * (1 - STRUCTURE_RETEST_PCT):
+            return None
+        if curr["close"] >= swing_level:
+            return None
+        if curr["close"] >= curr["open"]:
+            return None
+
+        recent = candles_1h[idx - STRUCTURE_BREAK_LOOKBACK: idx + 1]
+        sl_base = max(c["high"] for c in recent)
+
+    # 實體比
+    ratio = body_ratio(curr)
+    if ratio < STRUCTURE_BODY:
+        return None
+
+    # 量能
+    vol_lb  = 20
+    avg_vol = sum(c["volume"] for c in candles_1h[idx - vol_lb: idx]) / vol_lb
+    if avg_vol == 0:
+        return None
+    vol_ratio = curr["volume"] / avg_vol
+    if vol_ratio < STRUCTURE_VOL_RATIO:
+        return None
+
+    # 進出場水位
+    atrs  = calc_atr(candles_1h, 14)
+    atr   = atrs[idx] if atrs[idx] is not None else 0.0
+    entry = curr["close"]
+
+    if direction == "LONG":
+        stop_loss = sl_base - 1.0 * atr
+        target1   = entry + 1.5 * (entry - stop_loss)
+        target2   = entry + 2.5 * (entry - stop_loss)
+    else:
+        stop_loss = sl_base + 1.0 * atr
+        target1   = entry - 1.5 * (stop_loss - entry)
+        target2   = entry - 2.5 * (stop_loss - entry)
+
+    # RSI（展示用）
+    closes_1h = [c["close"] for c in candles_1h]
+    rsi_vals  = calc_rsi(closes_1h, RSI_PERIOD)
+    rsi_now   = rsi_vals[idx]
+
+    conditions = [
+        {"name": "4H EMA200 大方向",    "value": "多頭" if direction == "LONG" else "空頭"},
+        {"name": "4H EMA15/30 排列",   "value": f"EMA15({'>' if direction=='LONG' else '<'})EMA30 通過"},
+        {"name": "4H ADX",             "value": f"{adx_now:.1f} ≥ {ADX_4H_MIN}"},
+        {"name": "1H 結構突破",        "value": f"{'高點' if direction=='LONG' else '低點'} {swing_level:.6g} 已突破"},
+        {"name": "1H 回測確認",        "value": f"當根觸碰後{'反彈' if direction=='LONG' else '壓回'}"},
+        {"name": "量能",               "value": f"{vol_ratio:.2f}× ≥ {STRUCTURE_VOL_RATIO}×"},
+        {"name": "蠟燭實體比",         "value": f"{ratio*100:.0f}% ≥ {STRUCTURE_BODY*100:.0f}%"},
+    ]
+
+    return {
+        "symbol":           symbol,
+        "direction":        direction,
+        "strategy":         "STRUCTURE_BREAKOUT",
+        "convergence":      {"bandwidth": 0.0, "compression_bars": 0},
+        "confirm_1h":       {"body_ratio": ratio, "pullback_entry": swing_level,
+                             "rsi": round(rsi_now, 1) if rsi_now else None},
+        "levels":           {"entry": entry, "stop_loss": stop_loss,
+                             "target1": target1, "target2": target2, "atr": atr},
+        "vol_ratio":        vol_ratio,
+        "ema200_clear":     True,
+        "candle_time_ms":   curr["time"],
+        "conditions":       conditions,
+        "bonus_indicators": _calc_bonus_indicators(candles_1h, direction),
+    }
+
+
+# ─────────────────────────────────────────────────────────────
 # 統一入口
 # ─────────────────────────────────────────────────────────────
 
@@ -497,12 +668,12 @@ def scan_symbol(
     btc_regime_bull: bool = True,
 ) -> dict | None:
     """
-    依序嘗試兩種策略，任一通過即回傳結果 dict，全部失敗則回傳 None。
+    依序嘗試三種策略，任一通過即回傳結果 dict，全部失敗則回傳 None。
     btc_regime_bull=False 時（BTC 4H EMA15 < EMA60），山寨多單全部封鎖。
     """
-    is_main          = symbol in MAIN_COINS
-    regime_ok        = btc_regime_bull or is_main  # 主流幣不受 Regime 限制
-    regime_label     = "通過" if regime_ok else "暫停（BTC 空頭環境）"
+    is_main      = symbol in MAIN_COINS
+    regime_ok    = btc_regime_bull or is_main
+    regime_label = "通過" if regime_ok else "暫停（BTC 空頭環境）"
 
     emas_4h = ema_snapshot(candles_4h)
     emas_1h = ema_snapshot(candles_1h)
@@ -513,7 +684,7 @@ def scan_symbol(
         if result is None:
             return None
         if not regime_ok and result["direction"] == "LONG":
-            return None   # Regime Filter 封鎖山寨多單
+            return None
         result["regime_filter"] = regime_label
         return result
 
@@ -523,9 +694,15 @@ def scan_symbol(
         if result:
             return result
 
-    # 策略二：EMA30 回測反彈（1H）
+    # 策略二：EMA30 回測反彈（1H）+ ADX 趨勢過濾
     if emas_1h is not None:
         result = _apply_regime(_scan_ema_pullback(symbol, candles_4h, candles_1h, emas_4h, emas_1h))
+        if result:
+            return result
+
+    # 策略三：結構突破回測（1H）
+    if emas_1h is not None:
+        result = _apply_regime(_scan_structure_breakout(symbol, candles_4h, candles_1h, emas_4h, emas_1h))
         if result:
             return result
 

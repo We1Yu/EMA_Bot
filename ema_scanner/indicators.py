@@ -183,6 +183,67 @@ def calc_macd(
     return {"macd": macd_line, "signal": signal_line, "histogram": histogram}
 
 
+def calc_adx(candles: list[dict], period: int = 14) -> list[float | None]:
+    """
+    Average Directional Index (ADX)
+    > 20 表示市場有方向性趨勢，< 20 表示盤整震盪
+    """
+    n = len(candles)
+    result = [None] * n
+    if n < period * 2 + 1:
+        return result
+
+    tr_arr  = [0.0] * n
+    pdm_arr = [0.0] * n   # +DM
+    ndm_arr = [0.0] * n   # -DM
+
+    for i in range(1, n):
+        h, l   = candles[i]["high"],   candles[i]["low"]
+        ph, pl = candles[i-1]["high"], candles[i-1]["low"]
+        pc     = candles[i-1]["close"]
+        tr_arr[i]  = max(h - l, abs(h - pc), abs(l - pc))
+        up, down   = h - ph, pl - l
+        pdm_arr[i] = up   if (up > down   and up   > 0) else 0.0
+        ndm_arr[i] = down if (down > up   and down > 0) else 0.0
+
+    # Wilder 平滑初始值（第 1~period 根的總和）
+    s_tr  = sum(tr_arr[1:period + 1])
+    s_pdm = sum(pdm_arr[1:period + 1])
+    s_ndm = sum(ndm_arr[1:period + 1])
+
+    def _dx(sp, sn, st):
+        if st == 0:
+            return None
+        pdi, ndi = 100 * sp / st, 100 * sn / st
+        denom = pdi + ndi
+        return 100 * abs(pdi - ndi) / denom if denom else None
+
+    dx_arr = [None] * n
+    dx_arr[period] = _dx(s_pdm, s_ndm, s_tr)
+
+    for i in range(period + 1, n):
+        s_tr  = s_tr  - s_tr  / period + tr_arr[i]
+        s_pdm = s_pdm - s_pdm / period + pdm_arr[i]
+        s_ndm = s_ndm - s_ndm / period + ndm_arr[i]
+        dx_arr[i] = _dx(s_pdm, s_ndm, s_tr)
+
+    # ADX = DX 的 Wilder 平滑
+    dx_end = period + period
+    if dx_end > n:
+        return result
+    valid = [dx_arr[i] for i in range(period, dx_end) if dx_arr[i] is not None]
+    if len(valid) < period:
+        return result
+    adx = sum(valid) / period
+    result[dx_end - 1] = adx
+    for i in range(dx_end, n):
+        if dx_arr[i] is not None:
+            adx = (adx * (period - 1) + dx_arr[i]) / period
+        result[i] = adx
+
+    return result
+
+
 def body_ratio(candle: dict) -> float:
     """計算蠟燭實體比例（實體 / 全影）"""
     total_range = candle["high"] - candle["low"]

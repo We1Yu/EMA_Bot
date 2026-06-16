@@ -9,9 +9,10 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-TW_TZ     = timezone(timedelta(hours=8))
-PAPER_FILE = Path(__file__).parent / "paper_account.json"
-RISK_PCT   = 0.02   # 每筆風險 2% 資金
+TW_TZ         = timezone(timedelta(hours=8))
+PAPER_FILE    = Path(__file__).parent / "paper_account.json"
+RISK_PCT      = 0.02   # 每筆風險 2% 資金
+MAX_POSITIONS = 4      # 同時最多持倉數（防止同向相關性虧損）
 
 
 @dataclass
@@ -32,10 +33,12 @@ class Position:
 
 
 class PaperTrader:
-    def __init__(self, initial_balance: float = 10_000.0, risk_pct: float = RISK_PCT):
+    def __init__(self, initial_balance: float = 10_000.0, risk_pct: float = RISK_PCT,
+                 max_positions: int = MAX_POSITIONS):
         self.initial_balance = initial_balance
         self.balance         = initial_balance
         self.risk_pct        = risk_pct
+        self.max_positions   = max_positions
         self.positions: dict[str, Position] = {}
         self.trade_history:  list[dict]     = []
 
@@ -43,6 +46,8 @@ class PaperTrader:
     def open_position(self, result: dict, score: float) -> bool:
         symbol = result["symbol"]
         if symbol in self.positions:
+            return False
+        if len(self.positions) >= self.max_positions:
             return False
 
         lvl   = result["levels"]
@@ -236,6 +241,7 @@ class PaperTrader:
             "initial_balance": self.initial_balance,
             "balance":         self.balance,
             "risk_pct":        self.risk_pct,
+            "max_positions":   self.max_positions,
             "positions":       {k: asdict(v) for k, v in self.positions.items()},
             "trade_history":   self.trade_history,
         }
@@ -248,7 +254,8 @@ class PaperTrader:
             return cls()
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        trader = cls(data["initial_balance"], data.get("risk_pct", RISK_PCT))
+        trader = cls(data["initial_balance"], data.get("risk_pct", RISK_PCT),
+                     data.get("max_positions", MAX_POSITIONS))
         trader.balance       = data["balance"]
         trader.positions     = {
             k: Position(**{**{"tp1_hit": False, "last_bar_ms": 0, "strategy": ""}, **v})
