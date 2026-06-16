@@ -15,7 +15,6 @@ from pathlib import Path
 from bingx        import get_contracts, get_klines
 from scanner      import scan_symbol
 from scorer       import score_setup, passes_threshold
-from discord_bot  import send_setup_alerts, send_shutdown_report
 from paper_trader import PaperTrader, PAPER_FILE
 from indicators   import ema_snapshot
 
@@ -407,10 +406,8 @@ def run_scan() -> None:
     append_equity_snapshot(trader)
     trader.print_report()
 
-    # 發送通知
     if qualified:
-        send_setup_alerts(qualified)
-        print(f"[完成] 發送 {len(qualified)} 個訊號")
+        print(f"[完成] {len(qualified)} 個達標訊號")
     else:
         print(f"[完成] 無達標訊號（收斂中：{converging}）")
 
@@ -463,22 +460,6 @@ def main() -> None:
         except Exception as e:
             print(f"[ARCHIVE] 匯出失敗：{e}")
 
-        try:
-            trader = PaperTrader.load(PAPER_FILE)
-            session_trades = [
-                t for t in trader.trade_history
-                if t.get("open_ms", 0) >= BOT_START_TIME * 1000
-            ]
-            send_shutdown_report(
-                stats          = trader.get_stats(),
-                session_trades = session_trades,
-                start_time_str = _fmt_tw(BOT_START_TIME),
-                stop_time_str  = _fmt_tw(stop_ts),
-                duration_str   = _duration_str(BOT_START_TIME, stop_ts),
-            )
-            print("Discord 關閉報告已發送")
-        except Exception as e:
-            print(f"[Discord] 關閉報告發送失敗：{e}")
 
 
 if __name__ == "__main__":
