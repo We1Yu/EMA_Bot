@@ -26,6 +26,8 @@ SIGNALS_JSONL   = Path(__file__).parent / "signals_history.jsonl"
 TRADE_CSV       = Path(__file__).parent / "trade_history.csv"
 EQUITY_JSONL    = Path(__file__).parent / "equity_history.jsonl"
 SESSIONS_DIR    = Path(__file__).parent / "sessions"
+TRADE_RECORDS_DIR   = Path(__file__).parent / "trade_records"   # 平倉/關機交易紀錄存放處
+CLOSED_TRADES_JSONL = TRADE_RECORDS_DIR / "closed_trades.jsonl"  # 逐筆平倉紀錄（跨重啟保留）
 SCAN_INTERVAL   = 60 * 60          # 60 分鐘（秒）
 DEDUP_WINDOW    = 4 * 60 * 60      # 4 小時去重窗口（秒）
 KLINES_4H_LIMIT = 250   # EMA200 需要足夠歷史資料（至少 200 根）
@@ -62,9 +64,9 @@ def archive_session(start_ts: float, stop_ts: float, trader: PaperTrader) -> Non
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
 
-    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    TRADE_RECORDS_DIR.mkdir(parents=True, exist_ok=True)
     file_name = datetime.fromtimestamp(start_ts, tz=TW_TZ).strftime("%Y-%m-%d_%H-%M") + ".xlsx"
-    dest = SESSIONS_DIR / file_name
+    dest = TRADE_RECORDS_DIR / file_name
 
     wb = openpyxl.Workbook()
 
@@ -145,7 +147,7 @@ def archive_session(start_ts: float, stop_ts: float, trader: PaperTrader) -> Non
     ws2.column_dimensions["B"].width = 22
 
     wb.save(dest)
-    print(f"[ARCHIVE] 交易紀錄已存至 sessions/{file_name}")
+    print(f"[ARCHIVE] 交易紀錄已存至 trade_records/{file_name}")
 
 
 # ── 去重狀態管理 ──────────────────────────────────────────
@@ -218,6 +220,22 @@ def export_trades_csv(trader: PaperTrader) -> None:
             writer.writerow(row)
 
 
+def log_closed_trades(events: list[dict]) -> None:
+    """部位平倉時（含分批 TP1/TP2 與止損）即時將紀錄附加到
+    trade_records/closed_trades.jsonl，跨重啟永久保留，供網頁讀取。"""
+    if not events:
+        return
+    TRADE_RECORDS_DIR.mkdir(parents=True, exist_ok=True)
+    with open(CLOSED_TRADES_JSONL, "a", encoding="utf-8") as f:
+        for ev in events:
+            rec = dict(ev)
+            if isinstance(rec.get("open_ms"), (int, float)):
+                rec["open_time"]  = datetime.fromtimestamp(rec["open_ms"]  / 1000, tz=TW_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            if isinstance(rec.get("close_ms"), (int, float)):
+                rec["close_time"] = datetime.fromtimestamp(rec["close_ms"] / 1000, tz=TW_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+
 def append_equity_snapshot(trader: PaperTrader) -> None:
     """附加帳戶權益快照，供之後繪製資產曲線"""
     stats = trader.get_stats()
@@ -259,7 +277,6 @@ def _print_open_detail(result: dict, score: float) -> None:
         "BB_BREAKOUT":     "BB突破",
         "EMA_CROSS_FAST":  "EMA快叉",
         "SWING_BREAK":     "擺幅突破",
-        "OI_LS_SIGNAL":    "OI多空比",
     }
     strategy   = result.get("strategy", "?")
     strat_name = strat_map.get(strategy, strategy)
@@ -288,8 +305,6 @@ def _print_open_detail(result: dict, score: float) -> None:
         print(f"  │  {cross}  量比={vol:.1f}×  實體={conf['body_ratio']*100:.0f}%")
     elif strategy == "SWING_BREAK":
         print(f"  │  突破8根擺幅高低點  量比={vol:.1f}×  實體={conf['body_ratio']*100:.0f}%")
-    elif strategy == "OI_LS_SIGNAL":
-        print(f"  │  OI+{conf.get('oi_change_pct','?')}%  多頭佔比={conf.get('long_pct','?')}%  量比={vol:.1f}×  實體={conf['body_ratio']*100:.0f}%")
     print(f"  └{'─'*60}")
 
 
@@ -377,6 +392,7 @@ def run_scan() -> None:
 
     # 更新所有持倉（止損/止盈檢查）
     exit_events = trader.update_positions(latest_bar_4h)
+    log_closed_trades(exit_events)
     for ev in exit_events:
         print(f"  [紙倉出場] {ev['symbol']:20s}  {ev['reason']}  PnL: ${ev['pnl']:>+.2f}")
 

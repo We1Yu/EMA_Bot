@@ -7,7 +7,7 @@
 
 from indicators import (
     calc_bandwidth, calc_atr,
-    calc_rsi,
+    calc_rsi, calc_macd, calc_bollinger,
     ema_snapshot, body_ratio,
 )
 
@@ -16,15 +16,15 @@ MAIN_COINS = {"BTC-USDT", "ETH-USDT"}
 
 # ── EMA_CONVERGENCE 參數 ─────────────────────────────────────
 BANDWIDTH_PERCENTILE_WINDOW    = 50    # 計算帶寬分位的回溯根數
-BANDWIDTH_PERCENTILE_THRESHOLD = 0.25  # 在最低 25% 分位以下算收斂
-COMPRESSION_BARS               = 4     # 連續收縮 ≥ 4 根（含當根）
-BREAKOUT_VOL_RATIO_ALT         = 2.0   # 山寨量能門檻
+BANDWIDTH_PERCENTILE_THRESHOLD = 0.35  # 在最低 35% 分位以下算收斂（放寬，原 0.25）
+COMPRESSION_BARS               = 3     # 連續收縮 ≥ 3 根（放寬，原 4）
+BREAKOUT_VOL_RATIO_ALT         = 1.5   # 山寨量能門檻（放寬，原 2.0）
 BREAKOUT_VOL_RATIO_MAIN        = 1.3   # 主流量能門檻
 BREAKOUT_VOL_LOOKBACK          = 20    # 均量計算根數
 BREAKOUT_RSI_MAX               = 75    # 4H RSI 上限（排除超買追高）
-BODY_RATIO_MIN                 = 0.50  # 1H 實體比下限
+BODY_RATIO_MIN                 = 0.45  # 1H 實體比下限（放寬，原 0.50）
 EMA200_SKIP_PCT                = 0.01
-CROSS_LOOKBACK                 = 2     # 1H EMA15/30 穿越回溯根數
+CROSS_LOOKBACK                 = 3     # 1H EMA15/30 穿越回溯根數（放寬，原 2）
 
 # ── EMA_PULLBACK 參數 ────────────────────────────────────────
 EMA_PULLBACK_TOUCH_PCT_ALT  = 0.012   # 山寨觸碰 EMA30 距離上限 1.2%
@@ -35,6 +35,50 @@ EMA_PULLBACK_BODY           = 0.45
 EMA_PULLBACK_RSI_MIN        = 40      # 多單 1H RSI 下限
 
 RSI_PERIOD = 14
+
+
+# ─────────────────────────────────────────────────────────────
+# 加分指標計算（EMA 是入場門檻，其他指標只影響分數）
+# ─────────────────────────────────────────────────────────────
+
+def _calc_bonus_indicators(candles_1h: list[dict], direction: str) -> dict:
+    """計算 RSI / MACD / BB 作為加分參考，不影響是否開單。"""
+    closes = [c["close"] for c in candles_1h]
+    idx    = len(closes) - 1
+
+    # 1H RSI
+    rsi_vals = calc_rsi(closes, 14)
+    rsi_1h   = rsi_vals[idx]
+
+    # 1H MACD 柱狀圖方向 & 是否剛穿越
+    macd_data  = calc_macd(closes)
+    hist       = macd_data["histogram"]
+    hist_curr  = hist[idx]
+    hist_prev  = hist[idx - 1] if idx >= 1 else None
+    macd_aligned = False
+    macd_crossed = False
+    if hist_curr is not None:
+        macd_aligned = (direction == "LONG"  and hist_curr > 0) or \
+                       (direction == "SHORT" and hist_curr < 0)
+        if hist_prev is not None:
+            macd_crossed = (direction == "LONG"  and hist_prev <= 0 and hist_curr > 0) or \
+                           (direction == "SHORT" and hist_prev >= 0 and hist_curr < 0)
+
+    # 1H BB：收盤是否在中軌正確側
+    bb      = calc_bollinger(closes, 20)
+    bb_mid  = bb["middle"][idx]
+    bb_side_ok = None
+    if bb_mid is not None:
+        close      = closes[idx]
+        bb_side_ok = (direction == "LONG"  and close > bb_mid) or \
+                     (direction == "SHORT" and close < bb_mid)
+
+    return {
+        "rsi_1h":      round(rsi_1h, 1) if rsi_1h is not None else None,
+        "macd_aligned": macd_aligned,
+        "macd_crossed": macd_crossed,
+        "bb_side_ok":   bb_side_ok,
+    }
 
 
 # ─────────────────────────────────────────────────────────────
@@ -288,16 +332,17 @@ def _scan_ema_convergence(
     ]
 
     return {
-        "symbol":         symbol,
-        "direction":      direction,
-        "strategy":       "EMA_CONVERGENCE",
-        "convergence":    convergence,
-        "confirm_1h":     confirm,
-        "levels":         levels,
-        "vol_ratio":      vol_ratio,
-        "ema200_clear":   True,
-        "candle_time_ms": candles_4h[len(candles_4h) - 1]["time"],
-        "conditions":     conditions,
+        "symbol":            symbol,
+        "direction":         direction,
+        "strategy":          "EMA_CONVERGENCE",
+        "convergence":       convergence,
+        "confirm_1h":        confirm,
+        "levels":            levels,
+        "vol_ratio":         vol_ratio,
+        "ema200_clear":      True,
+        "candle_time_ms":    candles_4h[len(candles_4h) - 1]["time"],
+        "conditions":        conditions,
+        "bonus_indicators":  _calc_bonus_indicators(candles_1h, direction),
     }
 
 
@@ -424,18 +469,19 @@ def _scan_ema_pullback(
     ]
 
     return {
-        "symbol":         symbol,
-        "direction":      direction,
-        "strategy":       "EMA_PULLBACK",
-        "convergence":    {"bandwidth": 0.0, "compression_bars": 0},
-        "confirm_1h":     {"body_ratio": ratio, "pullback_entry": ema30,
-                           "rsi": round(rsi_now, 1) if rsi_now else None},
-        "levels":         {"entry": entry, "stop_loss": stop_loss,
-                           "target1": target1, "target2": target2, "atr": atr},
-        "vol_ratio":      vol_ratio,
-        "ema200_clear":   True,
-        "candle_time_ms": candles_1h[idx]["time"],
-        "conditions":     conditions,
+        "symbol":            symbol,
+        "direction":         direction,
+        "strategy":          "EMA_PULLBACK",
+        "convergence":       {"bandwidth": 0.0, "compression_bars": 0},
+        "confirm_1h":        {"body_ratio": ratio, "pullback_entry": ema30,
+                              "rsi": round(rsi_now, 1) if rsi_now else None},
+        "levels":            {"entry": entry, "stop_loss": stop_loss,
+                              "target1": target1, "target2": target2, "atr": atr},
+        "vol_ratio":         vol_ratio,
+        "ema200_clear":      True,
+        "candle_time_ms":    candles_1h[idx]["time"],
+        "conditions":        conditions,
+        "bonus_indicators":  _calc_bonus_indicators(candles_1h, direction),
     }
 
 

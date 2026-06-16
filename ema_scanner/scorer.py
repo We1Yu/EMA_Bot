@@ -23,8 +23,6 @@ def score_setup(result: dict) -> float:
     strategy = result.get("strategy", "EMA_CONVERGENCE")
     if strategy == "EMA_CONVERGENCE":
         return _score_convergence(result)
-    if strategy == "OI_LS_SIGNAL":
-        return _score_oi_ls(result)
     return _score_momentum(result)
 
 
@@ -52,6 +50,7 @@ def _score_convergence(result: dict) -> float:
     if result.get("ema200_clear"):
         score += 1.0
     score += 1.0          # 1H EMA 穿越已確認
+    score += _bonus_indicators(result)
     score += _session_bonus()
 
     return round(min(score, 10.0), 1)
@@ -74,51 +73,41 @@ def _score_momentum(result: dict) -> float:
     if result.get("ema200_clear"):
         score += 1.0
 
-    # RSI 越極端加分
-    if result.get("strategy") == "RSI_BOUNCE":
-        rsi = result["confirm_1h"].get("rsi")
-        if rsi is not None:
-            if result["direction"] == "LONG"  and rsi < 25:
-                score += 1.0
-            elif result["direction"] == "SHORT" and rsi > 75:
-                score += 1.0
-
+    score += _bonus_indicators(result)
     score += _session_bonus()
     return round(min(score, 10.0), 1)
 
 
-def _score_oi_ls(result: dict) -> float:
-    """OI + 多空比策略專用評分（純數據流派）"""
-    score = 3.0   # 基礎分
-    vol   = result["vol_ratio"]
-    body  = result["confirm_1h"]["body_ratio"]
-    info  = result["confirm_1h"]
 
-    # OI 升幅越大越強
-    oi_pct = info.get("oi_change_pct", 0)
-    if oi_pct >= 8.0:   score += 2.5
-    elif oi_pct >= 5.0: score += 2.0
-    elif oi_pct >= 3.0: score += 1.0
-    else:               score += 0.5
+def _bonus_indicators(result: dict) -> float:
+    """
+    RSI / MACD / BB 加分（最多 +2.0）。
+    EMA 仍是唯一入場條件，這些指標只影響分數高低。
+    """
+    bonus     = result.get("bonus_indicators", {})
+    direction = result.get("direction", "LONG")
+    score     = 0.0
 
-    # 多頭佔比越偏越強
-    long_pct = info.get("long_pct", 50)
-    deviation = abs(long_pct - 50)   # 偏離中性(50%)的程度
-    if deviation >= 10:   score += 2.0
-    elif deviation >= 6:  score += 1.0
-    elif deviation >= 3:  score += 0.5
+    # RSI：動能方向與交易方向一致且不過熱
+    rsi = bonus.get("rsi_1h")
+    if rsi is not None:
+        if direction == "LONG"  and 45 <= rsi <= 65:
+            score += 0.5   # 動能正在建立，還有上漲空間
+        elif direction == "SHORT" and 35 <= rsi <= 55:
+            score += 0.5
 
-    # 量能
-    if vol >= 2.0:    score += 1.5
-    elif vol >= 1.5:  score += 1.0
-    elif vol >= 1.2:  score += 0.5
+    # MACD 柱狀圖方向與交易方向一致
+    if bonus.get("macd_aligned"):
+        score += 0.5
+    # 柱狀圖剛穿越零軸（更強的訊號）
+    if bonus.get("macd_crossed"):
+        score += 0.5
 
-    # 實體比例
-    if body >= 0.65:  score += 1.0
-    elif body >= 0.50: score += 0.5
+    # BB：收盤在中軌正確側
+    if bonus.get("bb_side_ok"):
+        score += 0.5
 
-    score += _session_bonus()
-    return round(min(score, 10.0), 1)
+    return min(score, 2.0)
 
 
 def passes_threshold(score: float) -> bool:

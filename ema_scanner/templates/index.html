@@ -314,7 +314,6 @@
       BB_BREAKOUT:     ["#f0883e","BB突破"],
       EMA_CROSS_FAST:  ["#79c0ff","EMA快叉"],
       SWING_BREAK:     ["#ff7b72","擺幅突破"],
-      OI_LS_SIGNAL:    ["#bc8cff","OI多空比"],
     };
     const [c, l] = map[s] || ["#8b949e", s||"—"];
     return `<span class="strat-chip" style="background:${c}22;color:${c};">${l}</span>`;
@@ -463,12 +462,17 @@
         `<div class="card"><div class="label">${label}</div><div class="value ${cls}">${value}</div></div>`
       ).join("");
 
-      _allTrades = d.trades || [];
-      renderHistory();
-
     } catch (e) {
       document.getElementById("meta").textContent = "載入失敗：" + e;
     }
+  }
+
+  // ── Load persistent closed-trade records ──────────
+  async function loadRecords() {
+    try {
+      _allTrades = await (await fetch("/api/records")).json();
+      renderHistory();
+    } catch (e) {}
   }
 
   // ── Load signals ──────────────────────────────────
@@ -535,12 +539,14 @@
       const id = "tab-" + btn.dataset.tab;
       document.getElementById(id).classList.add("active");
       if (btn.dataset.tab === "scanner") loadSignals();
+      if (btn.dataset.tab === "history") loadRecords();
     });
   });
 
   // ── Init ──────────────────────────────────────────
   loadAccount();
-  setInterval(loadAccount, 5 * 60 * 1000);
+  loadRecords();
+  setInterval(() => { loadAccount(); loadRecords(); }, 5 * 60 * 1000);
 </script>
 </body>
 </html>

@@ -25,7 +25,6 @@ STRATEGY_NAMES = {
     "BB_BREAKOUT":     "布林帶收縮突破",
     "EMA_CROSS_FAST":  "EMA9/21 快速交叉",
     "SWING_BREAK":     "擺幅高低點突破",
-    "OI_LS_SIGNAL":    "OI 異常 + 多空比",
 }
 
 
@@ -151,19 +150,6 @@ def _strategy_logic_block(result: dict) -> str:
             f"  ▸ 量能   : {vol:.1f}× 均量  (需 ≥ 1.8×)\n"
             f"  ▸ 蠟燭實體 : {body*100:.0f}%\n"
             f"  失效條件 : 收盤跌回突破點下方"
-        )
-
-    if strategy == "OI_LS_SIGNAL":
-        oi_pct   = conf.get("oi_change_pct", 0)
-        long_pct = conf.get("long_pct", 50)
-        side     = "淨多頭升高" if direction == "LONG" else "淨空頭升高"
-        return (
-            f"  ▸ 純數據策略（不依賴均線）\n"
-            f"  ▸ OI 6H 變化 : +{oi_pct:.1f}%  (異常資金進場)\n"
-            f"  ▸ 多頭帳戶佔比 : {long_pct:.1f}%  ({side})\n"
-            f"  ▸ 量能   : {vol:.1f}× 均量\n"
-            f"  ▸ 蠟燭實體 : {body*100:.0f}%\n"
-            f"  失效條件 : OI 回落 或 多空比反轉"
         )
 
     return f"  ▸ 策略：{strategy}\n  ▸ 量能：{vol:.1f}× 均量"

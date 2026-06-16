@@ -20,6 +20,7 @@ from scorer       import score_setup, passes_threshold
 
 TW_TZ       = timezone(timedelta(hours=8))
 SIGNALS_LOG = Path(__file__).parent / "signals_log.json"
+CLOSED_TRADES_JSONL = Path(__file__).parent / "trade_records" / "closed_trades.jsonl"
 
 app = Flask(__name__)
 
@@ -161,6 +162,22 @@ def api_account():
         "trades":       trades,
         "equity_curve": {"labels": labels, "data": equity},
     })
+
+
+@app.route("/api/records")
+def api_records():
+    """讀取 trade_records/closed_trades.jsonl，回傳全部逐筆平倉紀錄（最新優先）。"""
+    records: list[dict] = []
+    if CLOSED_TRADES_JSONL.exists():
+        try:
+            with open(CLOSED_TRADES_JSONL, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        records.append(json.loads(line))
+        except Exception:
+            pass
+    return jsonify(list(reversed(records)))
 
 
 @app.route("/api/signals")
