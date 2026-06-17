@@ -57,6 +57,10 @@ EMA60_TOUCH_PCT  = 0.015   # 前根 low 需在 EMA60 的 1.5% 容忍範圍內
 EMA60_VOL_RATIO  = 1.5     # 反彈K棒量能門檻
 EMA60_BODY       = 0.50    # 反彈K棒實體比下限
 
+# ── RR 比（出場結構）────────────────────────────────────────
+TP1_MULT = 1.5   # 第一目標倍數（風報比）
+TP2_MULT = 2.5   # 第二目標倍數
+
 # ── STRUCTURE_BREAKOUT 參數 ──────────────────────────────────
 STRUCTURE_SWING_LOOKBACK  = 20    # 回溯多少根 1H bar 找 swing level
 STRUCTURE_BREAK_LOOKBACK  = 8     # 確認突破的最近幾根 bar
@@ -311,12 +315,12 @@ def calc_trade_levels(
     zone_low  = min(c["low"]  for c in zone_candles)
     if direction == "LONG":
         stop_loss = zone_low  - 1.0 * atr
-        target1   = entry + 1.5 * (entry - stop_loss)
-        target2   = entry + 2.5 * (entry - stop_loss)
+        target1   = entry + TP1_MULT * (entry - stop_loss)
+        target2   = entry + TP2_MULT * (entry - stop_loss)
     else:
         stop_loss = zone_high + 1.0 * atr
-        target1   = entry - 1.5 * (stop_loss - entry)
-        target2   = entry - 2.5 * (stop_loss - entry)
+        target1   = entry - TP1_MULT * (stop_loss - entry)
+        target2   = entry - TP2_MULT * (stop_loss - entry)
     return {"entry": entry, "stop_loss": stop_loss, "target1": target1, "target2": target2, "atr": atr}
 
 
@@ -498,12 +502,12 @@ def _scan_ema_pullback(
 
     if direction == "LONG":
         stop_loss = min(prev["low"], ema30) - 1.0 * atr
-        target1   = entry + 1.5 * (entry - stop_loss)
-        target2   = entry + 2.5 * (entry - stop_loss)
+        target1   = entry + TP1_MULT * (entry - stop_loss)
+        target2   = entry + TP2_MULT * (entry - stop_loss)
     else:
         stop_loss = max(prev["high"], ema30) + 1.0 * atr
-        target1   = entry - 1.5 * (stop_loss - entry)
-        target2   = entry - 2.5 * (stop_loss - entry)
+        target1   = entry - TP1_MULT * (stop_loss - entry)
+        target2   = entry - TP2_MULT * (stop_loss - entry)
 
     # 計算觸碰距離（展示用）
     if direction == "LONG":
@@ -660,12 +664,12 @@ def _scan_structure_breakout(
 
     if direction == "LONG":
         stop_loss = sl_base - 1.0 * atr
-        target1   = entry + 1.5 * (entry - stop_loss)
-        target2   = entry + 2.5 * (entry - stop_loss)
+        target1   = entry + TP1_MULT * (entry - stop_loss)
+        target2   = entry + TP2_MULT * (entry - stop_loss)
     else:
         stop_loss = sl_base + 1.0 * atr
-        target1   = entry - 1.5 * (stop_loss - entry)
-        target2   = entry - 2.5 * (stop_loss - entry)
+        target1   = entry - TP1_MULT * (stop_loss - entry)
+        target2   = entry - TP2_MULT * (stop_loss - entry)
 
     # RSI（展示用）
     closes_1h = [c["close"] for c in candles_1h]

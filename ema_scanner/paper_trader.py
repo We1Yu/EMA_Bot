@@ -14,6 +14,7 @@ PAPER_FILE    = Path(__file__).parent / "paper_account.json"
 RISK_PCT          = 0.02   # 每筆風險 2% 資金
 MAX_POSITIONS     = 4      # 同時最多持倉數
 MAX_SAME_DIR      = 2      # 同方向最多持倉數（限制相關性風險）
+TP1_FRACTION      = 0.25   # TP1 時平倉比例（取 25%，留 75% 衝 TP2）
 
 
 @dataclass
@@ -28,9 +29,10 @@ class Position:
     notional:     float  # 進場名義 USDT
     open_time_ms:  int
     score:         float
-    tp1_hit:       bool = False
-    last_bar_ms:   int  = 0    # 最後已處理的 K 棒時間（防止同一棒重複觸發）
-    strategy:      str  = ""   # 觸發策略名稱
+    tp1_hit:       bool  = False
+    last_bar_ms:   int   = 0    # 最後已處理的 K 棒時間（防止同一棒重複觸發）
+    strategy:      str   = ""   # 觸發策略名稱
+    entry_atr:     float = 0.0  # 進場時的 ATR（用於追蹤止損）
 
 
 class PaperTrader:
@@ -76,6 +78,7 @@ class PaperTrader:
             open_time_ms = result.get("candle_time_ms", int(time.time() * 1000)),
             score        = score,
             strategy     = result.get("strategy", ""),
+            entry_atr    = lvl.get("atr", 0.0),
         )
         self.positions[symbol] = pos
         return True
@@ -128,7 +131,7 @@ class PaperTrader:
         pos       = self.positions.pop(symbol)
         if reason == "SL" and pos.tp1_hit:
             reason = "套保"
-        remaining = 0.5 if pos.tp1_hit else 1.0
+        remaining = (1.0 - TP1_FRACTION) if pos.tp1_hit else 1.0
         if pos.direction == "LONG":
             pnl = (exit_price - pos.entry_price) * pos.contracts * remaining
         else:
@@ -141,7 +144,7 @@ class PaperTrader:
     def _partial(self, symbol: str, exit_price: float, reason: str, time_ms: int) -> dict:
         pos       = self.positions[symbol]
         pos.tp1_hit = True
-        fraction  = 0.5
+        fraction  = TP1_FRACTION
         if pos.direction == "LONG":
             pnl = (exit_price - pos.entry_price) * pos.contracts * fraction
         else:
@@ -264,7 +267,7 @@ class PaperTrader:
                      data.get("max_positions", MAX_POSITIONS))
         trader.balance       = data["balance"]
         trader.positions     = {
-            k: Position(**{**{"tp1_hit": False, "last_bar_ms": 0, "strategy": ""}, **v})
+            k: Position(**{**{"tp1_hit": False, "last_bar_ms": 0, "strategy": "", "entry_atr": 0.0}, **v})
             for k, v in data.get("positions", {}).items()
         }
         trader.trade_history = data.get("trade_history", [])
