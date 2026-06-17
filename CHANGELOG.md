@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.5.0] - 2026-06-17
+
+### 新增
+- **`crypto-quant-platform/` 全端平台**：整合 `ema_scanner/` 策略邏輯，以 FastAPI 重構後端，交易所從 BingX 改為 Binance Futures（`fapi.binance.com`）
+  - `backend/app/` — FastAPI 應用（API 路由：帳戶、訊號、掃描、回測）
+  - `backend/app/services/` — 策略掃描、技術指標、評分系統、回測引擎、紙上帳號
+  - `backend/app/services/data_ingestion/` — Binance Futures K 線下載器（含本機快取）
+  - `backend/scheduler.py` — 主排程迴圈（60 分鐘 + 4H K 線收盤觸發）
+  - `backend/Dockerfile` + `docker-compose.yml` — 容器化部署設定
+  - `docs/` — 專案概覽、路線圖、資料庫結構、目錄說明文件
+
 ## [1.4.0] - 2026-06-16
 
 ### 新增

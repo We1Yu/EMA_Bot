@@ -1,10 +1,11 @@
 # Trade Bot
 
-BingX USDT-M 永續合約虛擬交易機器人。
+加密貨幣量化交易平台，含虛擬交易機器人與全端 FastAPI 後端。
 
-| 系統 | 週期 | 策略 | 掃描頻率 |
-|------|------|------|----------|
-| EMA Scanner | 4 小時 / 1 小時 | EMA 群收斂突破 / EMA30 回測反彈 / 結構突破回測 | 每 60 分鐘 |
+| 系統 | 交易所 | 週期 | 策略 | 掃描頻率 |
+|------|--------|------|------|----------|
+| EMA Scanner（`ema_scanner/`）| BingX | 4 小時 / 1 小時 | EMA 群收斂突破 / EMA30 回測反彈 / 結構突破回測 | 每 60 分鐘 |
+| Crypto Quant Platform（`crypto-quant-platform/`）| Binance Futures | 4 小時 / 1 小時 | 同上（策略 v6） | 每 60 分鐘 |
 
 安裝與啟動說明請見 [INSTALL.md](INSTALL.md)。
 
@@ -14,19 +15,34 @@ BingX USDT-M 永續合約虛擬交易機器人。
 
 ```
 Trade_Bot/
-└── ema_scanner/
-    ├── main.py                  # 主程式（掃描排程 + 持倉管理）
-    ├── web_app.py               # Flask 儀表板後端（port 5001）
-    ├── scanner.py               # EMA_CONVERGENCE / EMA_PULLBACK / STRUCTURE_BREAKOUT 邏輯
-    ├── scorer.py                # 訊號評分（0–10 分，門檻 7.5）
-    ├── paper_trader.py          # 虛擬帳號（最大持倉 4，同向上限 2）
-    ├── indicators.py            # 技術指標（EMA / ATR / ADX）
-    ├── bingx.py                 # BingX REST API 封裝（含分頁拉取）
-    ├── fetch_data.py            # 歷史 K 線下載器（帶本機快取）
-    ├── backtest_regime.py       # 全量回測框架（Regime Filter 對照）
-    ├── analyze_trades.py        # 交易事件分析（一般 vs 事件驅動分類）
-    ├── discord_bot.py           # Discord Webhook 通知
-    └── templates/index.html     # 前端儀表板 UI
+├── ema_scanner/                 # 原版（BingX，歷史參考用，不再主動維護）
+│   ├── main.py                  # 主程式（掃描排程 + 持倉管理）
+│   ├── web_app.py               # Flask 儀表板後端（port 5001）
+│   ├── scanner.py               # EMA_CONVERGENCE / EMA_PULLBACK / STRUCTURE_BREAKOUT 邏輯
+│   ├── scorer.py                # 訊號評分（0–10 分，門檻 7.5）
+│   ├── paper_trader.py          # 虛擬帳號（最大持倉 4，同向上限 2）
+│   ├── indicators.py            # 技術指標（EMA / ATR / ADX）
+│   ├── bingx.py                 # BingX REST API 封裝（含分頁拉取）
+│   ├── fetch_data.py            # 歷史 K 線下載器（帶本機快取）
+│   ├── backtest_regime.py       # 全量回測框架（Regime Filter 對照）
+│   ├── analyze_trades.py        # 交易事件分析（一般 vs 事件驅動分類）
+│   └── templates/index.html     # 前端儀表板 UI
+└── crypto-quant-platform/       # 整合版（Binance Futures，主動維護）
+    ├── backend/
+    │   ├── app/
+    │   │   ├── main.py          # FastAPI 進入點
+    │   │   ├── api/             # 路由：帳戶 / 訊號 / 掃描 / 回測
+    │   │   ├── core/config.py   # 路徑常數統一管理
+    │   │   └── services/
+    │   │       ├── strategies/  # scanner.py + indicators.py
+    │   │       ├── scoring/     # scorer.py（門檻 7.5）
+    │   │       ├── backtest/    # engine.py（Regime Filter 對照）
+    │   │       ├── data_ingestion/ # Binance Futures K 線下載
+    │   │       └── paper_trader.py
+    │   ├── scheduler.py         # 主排程迴圈
+    │   └── Dockerfile
+    ├── docker-compose.yml
+    └── docs/                    # 專案文件
 ```
 
 ---
