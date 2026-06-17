@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.7.0] - 2026-06-17
+
+### 調整
+- **出場結構優化（v7）：TP1/TP2 分倉比例 50/50 → 25/75**
+  - `ema_scanner/paper_trader.py` + `backend/app/services/paper_trader.py` 新增 `TP1_FRACTION = 0.25`
+  - TP1 觸碰時平倉 25%（原 50%），停損移至成本價；TP2 觸碰時平倉剩餘 75%（原 50%）
+  - 回測 PF：0.72 → **1.08**（首次突破 1.0）；總損益：+$1,645 → +$1,898；最大回撤：8.20% → 9.08%
+- **TP 倍數統一為常數**
+  - `ema_scanner/scanner.py` + `backend/app/services/strategies/scanner.py` 新增 `TP1_MULT = 1.5`、`TP2_MULT = 2.5`
+  - 三個策略（EMA_CONVERGENCE / EMA_PULLBACK / STRUCTURE_BREAKOUT）共六處 hardcode 改為引用常數
+- **前端說明面板**：`ema_scanner/templates/index.html` 三頁新增可展開 Help Panel（總覽/掃描/歷史），說明各欄位意義與策略說明
+- `backend/app/services/data_ingestion/binance.py` 新增 `COINGECKO_URL` 常數備用
+
+### 提交紀錄
+- `9efbcbe` feat: sync TP1_MULT/TP2_MULT constants to backend scanner
+- `c09b197` feat: sync 25/75 exit split to backend paper_trader
+- `cd4c3e0` feat: improve profit factor to 1.08 via 25/75 split exit structure
+- `a9e6731` feat: add help panels to frontend and init crypto-quant-platform
+
+---
+
 ## [1.6.0] - 2026-06-17
 
 ### 新增

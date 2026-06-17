@@ -127,6 +127,7 @@ python scheduler.py
 - [x] Binance Futures K 線下載器（含本機快取）
 - [x] FastAPI 後端 API（帳戶 / 訊號 / 掃描 / 回測全路由補完）
 - [x] 容器化部署（Docker + docker-compose）
+- [x] 出場結構優化（TP1 25% / TP2 75%，PF 突破 1.0）
 - [ ] 前端儀表板（Phase 3）
 - [ ] 即時 WebSocket 模組（Phase 4）
 - [ ] 生產環境部署（Phase 5）
