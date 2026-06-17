@@ -10,8 +10,9 @@ _task: dict = {"running": False, "result": None, "error": None}
 _lock       = threading.Lock()
 
 
-@router.get("/status")
-async def backtest_status():
+@router.get("/")
+async def get_backtest_result():
+    """取得上次回測結果（若尚未執行則回傳 null）"""
     with _lock:
         return {
             "running": _task["running"],
@@ -20,9 +21,24 @@ async def backtest_status():
         }
 
 
+@router.get("/status")
+async def backtest_status():
+    """查詢回測任務執行狀態"""
+    with _lock:
+        return {
+            "running": _task["running"],
+            "has_result": _task["result"] is not None,
+            "error":   _task["error"],
+        }
+
+
 @router.post("/")
 async def trigger_backtest(use_all: bool = False, max_symbols: int = 30):
-    """觸發回測（非同步背景執行）"""
+    """觸發回測（非同步背景執行）
+
+    - `use_all=false`（預設）：只跑前 max_symbols 個幣種（BTC/ETH 優先）
+    - `use_all=true`：全市場（耗時較長）
+    """
     with _lock:
         if _task["running"]:
             return {"error": "回測任務進行中，請稍候"}

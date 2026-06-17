@@ -1,6 +1,6 @@
 from pathlib import Path
 
-BACKEND_DIR = Path(__file__).parent.parent.parent   # crypto-quant-platform/backend/
+BACKEND_DIR = Path(__file__).parent.parent.parent   # Trade_Bot/backend/
 DATA_DIR    = BACKEND_DIR / "data"
 
 PAPER_FILE          = DATA_DIR / "paper_account.json"

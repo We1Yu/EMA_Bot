@@ -1,6 +1,7 @@
 """帳戶 & 紙倉 API"""
 
 import concurrent.futures
+import json
 import time
 from datetime import datetime, timezone, timedelta
 
@@ -8,9 +9,7 @@ from fastapi import APIRouter
 
 from app.services.paper_trader import PaperTrader
 from app.services.data_ingestion.binance import get_ticker_price
-from app.core.config import CLOSED_TRADES_JSONL
-
-import json
+from app.core.config import CLOSED_TRADES_JSONL, EQUITY_JSONL, PAPER_FILE
 
 router = APIRouter()
 TW_TZ  = timezone(timedelta(hours=8))
@@ -48,7 +47,7 @@ async def get_account():
     trader = PaperTrader.load()
     stats  = trader.get_stats()
 
-    # 資金曲線
+    # 資金曲線（從 trade_history 重建）
     bal    = trader.initial_balance
     labels = ["開始"]
     equity = [bal]
@@ -127,6 +126,22 @@ async def get_account():
     }
 
 
+@router.get("/equity")
+async def get_equity():
+    """從 EQUITY_JSONL 讀取完整資產曲線快照（排程每次掃描後寫入）"""
+    records: list[dict] = []
+    if EQUITY_JSONL.exists():
+        try:
+            with open(EQUITY_JSONL, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        records.append(json.loads(line))
+        except Exception:
+            pass
+    return records
+
+
 @router.get("/records")
 async def get_records():
     """全部逐筆平倉紀錄（最新優先）"""
@@ -141,3 +156,21 @@ async def get_records():
         except Exception:
             pass
     return list(reversed(records))
+
+
+@router.post("/reset")
+async def reset_account():
+    """重置紙上帳戶（清除所有持倉與交易紀錄，保留初始資金設定）"""
+    trader = PaperTrader.load()
+    initial_balance = trader.initial_balance
+    risk_pct        = trader.risk_pct
+    max_positions   = trader.max_positions
+
+    fresh = PaperTrader(initial_balance, risk_pct, max_positions)
+    fresh.save(PAPER_FILE)
+
+    return {
+        "status":          "reset",
+        "initial_balance": initial_balance,
+        "reset_at":        datetime.now(TW_TZ).strftime("%Y/%m/%d %H:%M"),
+    }
