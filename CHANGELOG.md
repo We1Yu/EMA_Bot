@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.6.0] - 2026-06-17
+
+### 新增
+- **後端 API 全路由補完**
+  - `GET /api/scan/btc-regime`：即時查詢 BTC 4H EMA15 vs EMA60 Regime 狀態
+  - `GET /api/signals/history`：從 `signals_history.jsonl` 讀取完整歷史訊號（最多 2000 筆）
+  - `GET /api/signals/stats`：各策略 / 方向觸發次數統計 + 平均評分
+  - `GET /api/account/equity`：從 `equity_history.jsonl` 讀取完整資產曲線快照
+  - `POST /api/account/reset`：重置紙上帳戶（清倉清紀錄，保留初始資金設定）
+  - `GET /api/backtest/`：取得上次回測結果，不重新執行
+- **`GET /api/signals/`** 新增 `strategy` / `direction` query 參數過濾
+
+### 修正
+- **`scan.py` Regime Filter 失效**：`scan_symbol()` 少傳 `btc_regime_bull`，API 掃描永遠不套 BTC Regime 過濾；現在掃描前先查 BTC 4H EMA，正確傳入
+- **`scan.py` 訊號未寫入 JSONL**：API 掃描只寫 `signals_log.json`，未同步寫 `signals_history.jsonl`；現已補上
+- **`GET /api/backtest/status`** 新增 `has_result` 欄位，供前端判斷是否有可用結果
+
+### 調整
+- `config.py` 修正過時的路徑註解（`crypto-quant-platform/backend/` → `Trade_Bot/backend/`）
+
+### 提交紀錄
+- `dc69882` docs: update README to reflect current project state
+- `34be012` feat: complete backend API layer
+- `36bd031` docs: merge crypto-quant-platform CHANGELOG and README into root docs
+
+---
+
 ## [1.5.0] - 2026-06-17
 
 ### 新增
