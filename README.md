@@ -47,6 +47,46 @@ Trade_Bot/
 
 ---
 
+## Crypto Quant Platform
+
+一個整合多維度評分邏輯、歷史回測引擎、即時訊號儀表板的加密貨幣量化交易輔助平台（Binance Futures）。
+
+### 技術棧
+
+| 層次 | 技術 |
+|------|------|
+| 後端 | FastAPI · PostgreSQL · SQLAlchemy 2.0 (async) · WebSocket |
+| 前端 | React · TypeScript · TailwindCSS · Recharts |
+| 部署 | Docker · docker-compose |
+
+### 本地啟動
+
+```bash
+# 後端 + 資料庫
+docker-compose up -d
+
+# 確認後端運行
+curl http://localhost:8000/health
+```
+
+API 文件啟動後可在 `http://localhost:8000/docs` 查看。
+
+### 開發進度
+
+- [x] 專案架構與資料庫 schema 規劃
+- [x] 核心策略邏輯重構（EMA_CONVERGENCE / EMA_PULLBACK / STRUCTURE_BREAKOUT）
+- [x] 回測引擎（Regime Filter 對照）
+- [x] Binance Futures K 線資料下載器
+- [x] FastAPI 後端（帳戶 / 訊號 / 掃描 / 回測路由）
+- [x] 容器化部署（Docker + docker-compose）
+- [ ] 前端儀表板（Phase 3）
+- [ ] 即時 WebSocket 模組（Phase 4）
+- [ ] 生產環境部署（Phase 5）
+
+更多文件請見 [`crypto-quant-platform/docs/`](crypto-quant-platform/docs/)。
+
+---
+
 ## EMA Scanner
 
 ### 掃描排程

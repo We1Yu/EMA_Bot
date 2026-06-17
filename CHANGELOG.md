@@ -11,6 +11,12 @@
   - `backend/Dockerfile` + `docker-compose.yml` — 容器化部署設定
   - `docs/` — 專案概覽、路線圖、資料庫結構、目錄說明文件
 
+### 提交紀錄
+- `da1e901` refactor: move crypto-quant-platform contents to project root
+- `42317f3` docs: update CHANGELOG and README for v1.5.0
+- `853072a` feat: add crypto-quant-platform full-stack backend
+- `74db363` docs: auto-update CHANGELOG (2026-06-17)
+
 ## [1.4.0] - 2026-06-16
 
 ### 新增
@@ -33,6 +39,12 @@
 
 ### 移除
 - **`start.bat`**：啟動腳本已無使用需求，完整移除
+
+### 提交紀錄
+- `f47b764` docs: update CHANGELOG and README for v1.4.0
+- `182453c` chore: update .gitignore + remove start.bat
+- `9dbba72` feat: strategy v5→v6 + same-direction position limit
+- `608c57b` feat: add backtest framework + strategy improvements (v2→v4)
 
 ## [1.3.1] - 2026-06-16
 
