@@ -1,6 +1,11 @@
 # K 線快取與交易紀錄（執行時產生）
 ema_scanner/data/
 ema_scanner/trade_records/
+ema_scanner/sessions/
+
+# Crypto Quant Platform 執行期資料
+backend/data/
+backend/trade_records/
 
 # 狀態與日誌（含個人資料）
 ema_scanner/state.json
@@ -19,6 +24,8 @@ logs/
 .claude/settings.local.json
 .claude/memory/
 .claude/jobs/
+.claude/hooks/
+.claude/worktrees/
 
 # Python 快取
 __pycache__/

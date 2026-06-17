@@ -37,8 +37,7 @@ Trade_Bot/
 │   ├── scanner.py / scorer.py / indicators.py
 │   ├── paper_trader.py / backtest_regime.py
 │   └── templates/index.html
-├── crypto-quant-platform/           # 文件與設定（程式碼已移至根目錄）
-│   └── docs/
+├── docs/                            # 規劃與架構文件
 └── docker-compose.yml
 ```
 
@@ -55,7 +54,7 @@ Trade_Bot/
 | 後端 | FastAPI · Uvicorn |
 | 資料 | JSON / JSONL / CSV（檔案式，無需資料庫） |
 | 部署 | Docker · docker-compose |
-| 前端 | 待開發（Phase 3） |
+| 前端 | React + TypeScript（Phase 3，開發中） |
 
 ### 本地啟動
 
