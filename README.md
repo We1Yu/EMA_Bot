@@ -30,6 +30,7 @@ Trade_Bot/
 │   │       └── paper_trader.py
 │   ├── scheduler.py                 # 主排程迴圈
 │   ├── Dockerfile
+│   ├── static/index.html            # 網頁儀表板（Chart.js，由 FastAPI 提供服務）
 │   └── data/                        # 執行期資料（gitignore）
 ├── ema_scanner/                     # 原版（BingX，歷史參考，不再主動維護）
 │   ├── main.py
@@ -54,7 +55,7 @@ Trade_Bot/
 | 後端 | FastAPI · Uvicorn |
 | 資料 | JSON / JSONL / CSV（檔案式，無需資料庫） |
 | 部署 | Docker · docker-compose |
-| 前端 | React + TypeScript（Phase 3，開發中） |
+| 前端 | 原生 HTML / Chart.js（`backend/static/index.html`，FastAPI 靜態服務） |
 
 ### 本地啟動
 
@@ -106,6 +107,19 @@ API 文件：`http://localhost:8000/docs`
 | GET | `/api/backtest/` | 取得上次回測結果 |
 | GET | `/api/backtest/status` | 查詢回測任務狀態 |
 
+### 網頁儀表板
+
+啟動後端後開啟 `http://localhost:8000`，無需另外安裝前端依賴。
+
+| 頁面 | 功能 |
+|------|------|
+| 帳戶總覽 | 資金曲線圖（Chart.js）、帳戶統計、持倉列表、交易紀錄 |
+| 訊號歷史 | 歷史訊號列表，可按策略 / 方向篩選 |
+| 全市場掃描 | 手動觸發掃描、即時顯示 BTC Regime 狀態 |
+| 回測 | 觸發回測、查看績效報告 |
+
+側欄常駐顯示 BTC Regime 狀態（多頭 / 空頭）與最後更新時間。
+
 ### 排程器
 
 ```bash
@@ -127,7 +141,7 @@ python scheduler.py
 - [x] FastAPI 後端 API（帳戶 / 訊號 / 掃描 / 回測全路由補完）
 - [x] 容器化部署（Docker + docker-compose）
 - [x] 出場結構優化（TP1 25% / TP2 75%，PF 突破 1.0）
-- [ ] 前端儀表板（Phase 3）
+- [x] 前端儀表板（`backend/static/index.html`，Chart.js 暗色主題）
 - [ ] 即時 WebSocket 模組（Phase 4）
 - [ ] 生產環境部署（Phase 5）
 
