@@ -54,6 +54,10 @@ STRUCTURE_VOL_RATIO       = 1.5
 STRUCTURE_BODY            = 0.50
 STRUCTURE_MIN_BREAK_BARS  = 2
 
+# ── RR 比（出場結構）────────────────────────────────────────
+TP1_MULT = 1.5   # 第一目標倍數
+TP2_MULT = 2.5   # 第二目標倍數
+
 # ── EMA60_BOUNCE 參數（停用中） ──────────────────────────────
 PINBAR_EMA30_TOUCH_PCT = 0.015
 EMA60_TOUCH_PCT        = 0.015
@@ -293,12 +297,12 @@ def calc_trade_levels(
     zone_low     = min(c["low"]  for c in zone_candles)
     if direction == "LONG":
         stop_loss = zone_low  - 1.0 * atr
-        target1   = entry + 1.5 * (entry - stop_loss)
-        target2   = entry + 2.5 * (entry - stop_loss)
+        target1   = entry + TP1_MULT * (entry - stop_loss)
+        target2   = entry + TP2_MULT * (entry - stop_loss)
     else:
         stop_loss = zone_high + 1.0 * atr
-        target1   = entry - 1.5 * (stop_loss - entry)
-        target2   = entry - 2.5 * (stop_loss - entry)
+        target1   = entry - TP1_MULT * (stop_loss - entry)
+        target2   = entry - TP2_MULT * (stop_loss - entry)
     return {"entry": entry, "stop_loss": stop_loss, "target1": target1, "target2": target2, "atr": atr}
 
 
@@ -469,12 +473,12 @@ def _scan_ema_pullback(
 
     if direction == "LONG":
         stop_loss = min(prev["low"], ema30) - 1.0 * atr
-        target1   = entry + 1.5 * (entry - stop_loss)
-        target2   = entry + 2.5 * (entry - stop_loss)
+        target1   = entry + TP1_MULT * (entry - stop_loss)
+        target2   = entry + TP2_MULT * (entry - stop_loss)
     else:
         stop_loss = max(prev["high"], ema30) + 1.0 * atr
-        target1   = entry - 1.5 * (stop_loss - entry)
-        target2   = entry - 2.5 * (stop_loss - entry)
+        target1   = entry - TP1_MULT * (stop_loss - entry)
+        target2   = entry - TP2_MULT * (stop_loss - entry)
 
     if direction == "LONG":
         actual_touch_pct = abs(prev["low"] - ema30_p) / ema30_p * 100
@@ -604,12 +608,12 @@ def _scan_structure_breakout(
 
     if direction == "LONG":
         stop_loss = sl_base - 1.0 * atr
-        target1   = entry + 1.5 * (entry - stop_loss)
-        target2   = entry + 2.5 * (entry - stop_loss)
+        target1   = entry + TP1_MULT * (entry - stop_loss)
+        target2   = entry + TP2_MULT * (entry - stop_loss)
     else:
         stop_loss = sl_base + 1.0 * atr
-        target1   = entry - 1.5 * (stop_loss - entry)
-        target2   = entry - 2.5 * (stop_loss - entry)
+        target1   = entry - TP1_MULT * (stop_loss - entry)
+        target2   = entry - TP2_MULT * (stop_loss - entry)
 
     closes_1h = [c["close"] for c in candles_1h]
     rsi_vals  = calc_rsi(closes_1h, RSI_PERIOD)
