@@ -4,10 +4,8 @@
 
 | 系統 | 交易所 | 週期 | 策略 | 掃描頻率 |
 |------|--------|------|------|----------|
-| EMA Scanner（`ema_scanner/`）| BingX | 4 小時 / 1 小時 | EMA 群收斂突破 / EMA30 回測反彈 / 結構突破回測 | 每 60 分鐘 |
-| Crypto Quant Platform（`crypto-quant-platform/`）| Binance Futures | 4 小時 / 1 小時 | 同上（策略 v6） | 每 60 分鐘 |
-
-安裝與啟動說明請見 [INSTALL.md](INSTALL.md)。
+| EMA Scanner（`ema_scanner/`）| BingX | 4H / 1H | EMA 收斂突破 / EMA30 回測反彈 / 結構突破回測 | 每 60 分鐘 |
+| Crypto Quant Platform（`backend/`）| Binance Futures | 4H / 1H | 同上（策略 v6）| 每 60 分鐘 |
 
 ---
 
@@ -15,75 +13,123 @@
 
 ```
 Trade_Bot/
-├── ema_scanner/                 # 原版（BingX，歷史參考用，不再主動維護）
-│   ├── main.py                  # 主程式（掃描排程 + 持倉管理）
-│   ├── web_app.py               # Flask 儀表板後端（port 5001）
-│   ├── scanner.py               # EMA_CONVERGENCE / EMA_PULLBACK / STRUCTURE_BREAKOUT 邏輯
-│   ├── scorer.py                # 訊號評分（0–10 分，門檻 7.5）
-│   ├── paper_trader.py          # 虛擬帳號（最大持倉 4，同向上限 2）
-│   ├── indicators.py            # 技術指標（EMA / ATR / ADX）
-│   ├── bingx.py                 # BingX REST API 封裝（含分頁拉取）
-│   ├── fetch_data.py            # 歷史 K 線下載器（帶本機快取）
-│   ├── backtest_regime.py       # 全量回測框架（Regime Filter 對照）
-│   ├── analyze_trades.py        # 交易事件分析（一般 vs 事件驅動分類）
-│   └── templates/index.html     # 前端儀表板 UI
-└── crypto-quant-platform/       # 整合版（Binance Futures，主動維護）
-    ├── backend/
-    │   ├── app/
-    │   │   ├── main.py          # FastAPI 進入點
-    │   │   ├── api/             # 路由：帳戶 / 訊號 / 掃描 / 回測
-    │   │   ├── core/config.py   # 路徑常數統一管理
-    │   │   └── services/
-    │   │       ├── strategies/  # scanner.py + indicators.py
-    │   │       ├── scoring/     # scorer.py（門檻 7.5）
-    │   │       ├── backtest/    # engine.py（Regime Filter 對照）
-    │   │       ├── data_ingestion/ # Binance Futures K 線下載
-    │   │       └── paper_trader.py
-    │   ├── scheduler.py         # 主排程迴圈
-    │   └── Dockerfile
-    ├── docker-compose.yml
-    └── docs/                    # 專案文件
+├── backend/                         # Crypto Quant Platform 後端（主動維護）
+│   ├── app/
+│   │   ├── main.py                  # FastAPI 進入點
+│   │   ├── api/
+│   │   │   ├── account.py           # 帳戶 / 持倉 / 資金曲線 / 重置
+│   │   │   ├── signals.py           # 訊號歷史 / 統計 / 篩選
+│   │   │   ├── scan.py              # 即時掃描觸發 / BTC Regime 狀態
+│   │   │   └── backtest.py          # 回測觸發 / 結果查詢
+│   │   ├── core/config.py           # 路徑常數統一管理
+│   │   └── services/
+│   │       ├── strategies/          # scanner.py + indicators.py
+│   │       ├── scoring/             # scorer.py（門檻 7.5）
+│   │       ├── backtest/            # engine.py（Regime Filter 對照）
+│   │       ├── data_ingestion/      # Binance Futures K 線下載
+│   │       └── paper_trader.py
+│   ├── scheduler.py                 # 主排程迴圈
+│   ├── Dockerfile
+│   └── data/                        # 執行期資料（gitignore）
+├── ema_scanner/                     # 原版（BingX，歷史參考，不再主動維護）
+│   ├── main.py
+│   ├── web_app.py                   # Flask 儀表板（port 5001）
+│   ├── scanner.py / scorer.py / indicators.py
+│   ├── paper_trader.py / backtest_regime.py
+│   └── templates/index.html
+├── crypto-quant-platform/           # 文件與設定（程式碼已移至根目錄）
+│   └── docs/
+└── docker-compose.yml
 ```
 
 ---
 
 ## Crypto Quant Platform
 
-一個整合多維度評分邏輯、歷史回測引擎、即時訊號儀表板的加密貨幣量化交易輔助平台（Binance Futures）。
+整合多維度評分邏輯、歷史回測引擎與紙上帳戶管理的 Binance Futures 量化交易輔助平台。
 
 ### 技術棧
 
 | 層次 | 技術 |
 |------|------|
-| 後端 | FastAPI · PostgreSQL · SQLAlchemy 2.0 (async) · WebSocket |
-| 前端 | React · TypeScript · TailwindCSS · Recharts |
+| 後端 | FastAPI · Uvicorn |
+| 資料 | JSON / JSONL / CSV（檔案式，無需資料庫） |
 | 部署 | Docker · docker-compose |
+| 前端 | 待開發（Phase 3） |
 
 ### 本地啟動
 
 ```bash
-# 後端 + 資料庫
-docker-compose up -d
+# 方式一：直接啟動（開發用）
+cd backend
+pip install fastapi uvicorn requests openpyxl
+uvicorn app.main:app --reload --port 8000
 
-# 確認後端運行
-curl http://localhost:8000/health
+# 方式二：Docker
+docker-compose up -d
 ```
 
-API 文件啟動後可在 `http://localhost:8000/docs` 查看。
+API 文件：`http://localhost:8000/docs`  
+健康檢查：`http://localhost:8000/health`
+
+### API 端點
+
+**帳戶 `/api/account`**
+
+| 方法 | 路徑 | 說明 |
+|------|------|------|
+| GET | `/api/account/` | 帳戶統計 + 持倉（含即時現價）+ 最近 100 筆交易 |
+| GET | `/api/account/equity` | 完整資產曲線快照（EQUITY_JSONL） |
+| GET | `/api/account/records` | 全部逐筆平倉紀錄（最新優先） |
+| POST | `/api/account/reset` | 重置紙上帳戶（清倉清紀錄） |
+
+**訊號 `/api/signals`**
+
+| 方法 | 路徑 | 說明 |
+|------|------|------|
+| GET | `/api/signals/` | 最近訊號（`limit`、`strategy`、`direction` 可篩選） |
+| GET | `/api/signals/history` | 完整歷史訊號（最多 2000 筆，可篩選） |
+| GET | `/api/signals/stats` | 各策略 / 方向觸發次數 + 平均評分 |
+
+**掃描 `/api/scan`**
+
+| 方法 | 路徑 | 說明 |
+|------|------|------|
+| POST | `/api/scan/` | 觸發全市場掃描（背景執行，含 BTC Regime 過濾） |
+| GET | `/api/scan/status` | 查詢掃描任務狀態 |
+| GET | `/api/scan/btc-regime` | 查詢目前 BTC 4H Regime 狀態（EMA15 vs EMA60） |
+
+**回測 `/api/backtest`**
+
+| 方法 | 路徑 | 說明 |
+|------|------|------|
+| POST | `/api/backtest/` | 觸發回測（`use_all`、`max_symbols` 參數） |
+| GET | `/api/backtest/` | 取得上次回測結果 |
+| GET | `/api/backtest/status` | 查詢回測任務狀態 |
+
+### 排程器
+
+```bash
+cd backend
+python scheduler.py
+```
+
+- 每 **60 分鐘**掃描一次全市場
+- 在 UTC 00 / 04 / 08 / 12 / 16 / 20（4H K 線收盤）額外觸發
+- 掃描結束後自動更新持倉、寫入 EQUITY_JSONL
+- 程式關閉時自動匯出 Excel 交易報告
 
 ### 開發進度
 
-- [x] 專案架構與資料庫 schema 規劃
-- [x] 核心策略邏輯重構（EMA_CONVERGENCE / EMA_PULLBACK / STRUCTURE_BREAKOUT）
+- [x] 專案架構規劃
+- [x] 核心策略邏輯（EMA_CONVERGENCE / EMA_PULLBACK / STRUCTURE_BREAKOUT）
 - [x] 回測引擎（Regime Filter 對照）
-- [x] Binance Futures K 線資料下載器
-- [x] FastAPI 後端（帳戶 / 訊號 / 掃描 / 回測路由）
+- [x] Binance Futures K 線下載器（含本機快取）
+- [x] FastAPI 後端 API（帳戶 / 訊號 / 掃描 / 回測全路由補完）
 - [x] 容器化部署（Docker + docker-compose）
 - [ ] 前端儀表板（Phase 3）
 - [ ] 即時 WebSocket 模組（Phase 4）
 - [ ] 生產環境部署（Phase 5）
-
-更多文件請見 [`crypto-quant-platform/docs/`](crypto-quant-platform/docs/)。
 
 ---
 
@@ -128,20 +174,21 @@ API 文件啟動後可在 `http://localhost:8000/docs` 查看。
 | 1H 收盤位置 | 在 EMA60 正確側 |
 | 前根觸碰 EMA30 | 主流幣距離 ≤ 0.7%；山寨幣距離 ≤ 1.2% |
 | 當根反彈確認 | 多單：陽線；空單：陰線 |
-| 量能 | ≥ 20 根均量 × 1.3 |
-| 1H RSI（多單）| ≥ 40（確認動能未死；空單免檢） |
+| 量能 | ≥ 20 根均量 × 1.8 |
+| 1H RSI（多單）| ≥ 48（確認動能未死；空單免檢） |
 
 停損：多單 = min(前根低點, EMA30) − 1.0 ATR；空單 = max(前根高點, EMA30) + 1.0 ATR
 
-**STRUCTURE_BREAKOUT**（4H 結構突破）
+**STRUCTURE_BREAKOUT**（1H 結構突破回測）
 
 | 條件 | 說明 |
 |------|------|
 | 4H EMA200 大方向 | 多頭 / 空頭 |
 | 4H RSI 動能 | 多單：RSI 46–76；空單：RSI 24–54 |
-| 結構突破 | 突破近期歷史高低點 |
-| 確認根數 | ≥ 2 根 4H K 線收盤確認突破 |
-| 回測進場 | 價格回測結構位附近 |
+| 4H ADX | > 20 |
+| 結構突破 | 1H 突破近期歷史高低點 |
+| 確認根數 | ≥ 2 根 1H K 線收盤確認突破 |
+| 回測進場 | 價格回測結構位附近（0.8% 內） |
 
 停損：突破前結構高低點反側 ± 1.0 ATR
 
@@ -193,9 +240,11 @@ API 文件啟動後可在 `http://localhost:8000/docs` 查看。
 | 項目 | 條件 | 得分 |
 |------|------|------|
 | 結構突破基礎分 | — | +4.0 |
-| 量能倍數 | ≥ 2.0× | +2.0 |
+| 量能倍數 | ≥ 2.5× | +2.5 |
+| | ≥ 2.0× | +2.0 |
 | | ≥ 1.5× | +1.0 |
-| K棒實體比 | ≥ 70% | +1.5 |
+| K棒實體比 | ≥ 75% | +2.0 |
+| | ≥ 65% | +1.5 |
 | | ≥ 55% | +0.5 |
 | 歐美盤加成（TWN 15–22 時）| — | +1.0 |
 
@@ -210,7 +259,7 @@ API 文件啟動後可在 `http://localhost:8000/docs` 查看。
 
 ---
 
-## 網頁儀表板
+## 網頁儀表板（EMA Scanner）
 
 開啟 `http://localhost:5001`，每 **10 秒**自動刷新。
 
@@ -225,28 +274,32 @@ API 文件啟動後可在 `http://localhost:8000/docs` 查看。
 
 ## 設定
 
-### 環境變數（機密設定）
+### 環境變數
 
-機密資訊透過環境變數傳入，不寫入原始碼。在 `ema_scanner/` 目錄建立 `.env` 檔案（`.gitignore` 已排除，不會上傳）：
+機密資訊透過環境變數傳入，不寫入原始碼。在 `ema_scanner/` 目錄建立 `.env` 檔案（`.gitignore` 已排除）：
 
 **`ema_scanner/.env`**
 ```
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 ```
 
-> Windows 使用者：`.env` 檔案內容需手動設定為系統環境變數（控制台 → 系統 → 進階系統設定 → 環境變數），或透過啟動腳本 `set VAR=value` 注入。
+> Windows 使用者：透過控制台 → 系統 → 進階系統設定 → 環境變數手動設定，或透過啟動腳本 `set VAR=value` 注入。
 
 ---
 
 ## 資料檔案
 
-| 檔案 | 內容 |
-|------|------|
-| `paper_account.json` | 虛擬帳號即時狀態（持倉 / 餘額） |
-| `state.json` | 最新掃描狀態（供儀表板讀取） |
-| `trade_history.csv` | 完整成交紀錄 |
-| `equity_history.jsonl` | 資產曲線快照 |
-| `signals_history.jsonl` | 所有掃描訊號歷史 |
-| `signals_log.json` | 當次啟動訊號快取 |
-| `trade_records/` | 每筆平倉紀錄與關機 Excel 報告 |
-| `sessions/` | 每次 session 結束後自動歸檔的 Excel |
+資料目錄：`backend/data/`（Crypto Quant Platform）和 `ema_scanner/`（EMA Scanner）
+
+| 檔案 | 系統 | 內容 |
+|------|------|------|
+| `backend/data/paper_account.json` | CQP | 紙上帳戶即時狀態（持倉 / 餘額） |
+| `backend/data/state.json` | CQP | 最新掃描去重狀態 |
+| `backend/data/trade_history.csv` | CQP | 完整成交紀錄（CSV） |
+| `backend/data/equity_history.jsonl` | CQP | 資產曲線快照（每次掃描後寫入） |
+| `backend/data/signals_history.jsonl` | CQP | 所有達標訊號完整歷史 |
+| `backend/data/signals_log.json` | CQP | 最新 300 筆訊號快取（API 用） |
+| `backend/data/trade_records/` | CQP | 逐筆平倉紀錄 + 關機 Excel 報告 |
+| `ema_scanner/paper_account.json` | EMA | 紙上帳戶即時狀態 |
+| `ema_scanner/state.json` | EMA | 最新掃描狀態（供儀表板讀取） |
+| `ema_scanner/trade_records/` | EMA | 每次 session 結束後自動歸檔的 Excel |
