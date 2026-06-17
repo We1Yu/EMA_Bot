@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.7.1] - 2026-06-17
+
+### 調整
+- **清理 repo 結構**：移除過時的 `crypto-quant-platform/` 子目錄（規劃文件已由根目錄 `backend/` 與主 `README.md` 取代）
+- **`.gitignore` 補完**：新增 `backend/data/`（執行期 JSON/JSONL 資料）、`backend/trade_records/`、`.claude/hooks/`、`.claude/worktrees/`，防止個人環境設定與執行期檔案意外上傳
+- **文件更新**：
+  - `docs/00_PROJECT_OVERVIEW.md` — 改寫為反映實際實作（檔案式儲存、真實回測數據），移除未實作的 PostgreSQL / SQLAlchemy 規劃
+  - `docs/03_DIRECTORY_STRUCTURE.md` — 對應現行目錄結構重新整理
+  - `README.md` — 移除目錄樹中的 `crypto-quant-platform/`，前端技術棧更新為「React + TypeScript（Phase 3，開發中）」
+
+### 提交紀錄
+- `5882259` chore: clean up repo structure and update docs
+
+---
+
 ## [1.7.0] - 2026-06-17
 
 ### 調整
