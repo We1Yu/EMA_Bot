@@ -198,6 +198,50 @@
     .progress-bar-fill {
       height: 100%; border-radius: 3px; transition: width .4s;
     }
+
+    /* Help panel */
+    .help-toggle {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: none; border: 1px solid var(--border);
+      color: var(--muted); padding: 5px 14px; font-size: 0.82em;
+      font-weight: 500; border-radius: 20px; cursor: pointer;
+      font-family: inherit; transition: all .15s ease;
+      margin-bottom: 14px;
+    }
+    .help-toggle:hover { border-color: #484f58; color: var(--text); }
+    .help-toggle .arrow { transition: transform .2s ease; display: inline-block; }
+    .help-toggle.open .arrow { transform: rotate(90deg); }
+    .help-panel {
+      display: none; background: var(--panel2);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 16px 20px; margin-bottom: 20px;
+      font-size: 0.85em; line-height: 1.7;
+    }
+    .help-panel.open { display: block; animation: fadein .2s ease; }
+    .help-panel h3 {
+      font-size: 0.9em; color: var(--blue); margin: 0 0 8px;
+      padding-bottom: 6px; border-bottom: 1px solid var(--border);
+    }
+    .help-panel h3:not(:first-child) { margin-top: 14px; }
+    .help-panel ul { margin: 0; padding-left: 18px; color: var(--muted); }
+    .help-panel ul li { margin-bottom: 3px; }
+    .help-panel ul li strong { color: var(--text); }
+    .help-panel .badge {
+      display: inline-block; padding: 1px 7px; border-radius: 4px;
+      font-size: 0.8em; font-weight: 600; margin-right: 2px;
+    }
+    .help-panel .b-green  { background: rgba(63,185,80,.2);  color: var(--green); }
+    .help-panel .b-red    { background: rgba(248,81,73,.2);  color: var(--red); }
+    .help-panel .b-yellow { background: rgba(210,153,34,.2); color: var(--yellow); }
+    .help-panel .b-blue   { background: rgba(88,166,255,.2); color: var(--blue); }
+    .help-panel .b-purple { background: rgba(188,140,255,.2);color: var(--purple); }
+    .help-panel .b-muted  { background: rgba(139,148,158,.2);color: var(--muted); }
+    .help-panel .tip {
+      margin-top: 12px; padding: 8px 12px;
+      background: rgba(88,166,255,.07); border-left: 3px solid var(--blue);
+      border-radius: 0 6px 6px 0; color: var(--muted);
+    }
+    .help-panel .tip strong { color: var(--text); }
   </style>
 </head>
 <body>
@@ -212,6 +256,34 @@
   <div class="tab-content active" id="tab-main">
     <h1>📊 EMA Scanner <span style="color:var(--muted);font-size:0.6em;font-weight:400;">(BingX 4H 永續合約)</span></h1>
     <div class="sub" id="meta">載入中...</div>
+
+    <button class="help-toggle" onclick="toggleHelp('help-main',this)">
+      <span class="arrow">▶</span> 功能說明
+    </button>
+    <div class="help-panel" id="help-main">
+      <h3>📊 總覽頁功能說明</h3>
+      <ul>
+        <li><strong>帳戶餘額</strong> — 虛擬帳戶目前資金（初始 $10,000），每次平倉後自動更新</li>
+        <li><strong>總損益</strong> — 所有已平倉交易的累計損益，括號內為報酬率</li>
+        <li><strong>持倉中</strong> — 目前尚未平倉的虛擬倉數量</li>
+        <li><strong>已平倉次數</strong> — 完整觸發止損或止盈而平倉的交易筆數</li>
+        <li><strong>勝率</strong> — 獲利平倉次數 ÷ 總平倉次數</li>
+        <li><strong>最大回撤</strong> — 從資金高點到低點的最大跌幅，衡量風險</li>
+      </ul>
+      <h3>📈 資金曲線</h3>
+      <ul>
+        <li>每筆平倉後記錄一個點，顯示資金隨時間的變化趨勢</li>
+      </ul>
+      <h3>📌 持倉卡說明</h3>
+      <ul>
+        <li><strong>進度條</strong> — 藍色=持平、綠色=接近 TP2、紅色=接近止損</li>
+        <li><strong>未實現損益</strong> — 以目前現價計算，尚未實際平倉</li>
+        <li><strong>止損 (SL)</strong> — 觸碰此價位時自動平倉止損</li>
+        <li><strong>TP1</strong> — 第一目標，觸碰後止損會移至成本價（打平保本）；打勾 ✓ 表示已達到</li>
+        <li><strong>TP2</strong> — 第二目標，觸碰後完整平倉獲利出場</li>
+      </ul>
+      <div class="tip"><strong>自動刷新：</strong>頁面每 5 分鐘自動更新一次帳戶資料與持倉狀態。</div>
+    </div>
 
     <div class="grid" id="stats-grid"></div>
 
@@ -230,6 +302,36 @@
   <!-- ───────── 掃描 & 訊號 ───────── -->
   <div class="tab-content" id="tab-scanner">
     <h1>🔍 掃描 &amp; 訊號</h1>
+
+    <button class="help-toggle" onclick="toggleHelp('help-scanner',this)">
+      <span class="arrow">▶</span> 功能說明
+    </button>
+    <div class="help-panel" id="help-scanner">
+      <h3>▶ 立即掃描</h3>
+      <ul>
+        <li>對所有 BingX USDT 永續合約執行訊號掃描，通常需要 10–30 秒</li>
+        <li>達到分數門檻的訊號會自動開虛擬倉（單一幣種限 1 倉）</li>
+        <li>掃描期間按鈕會顯示「⏳ 掃描中...」，完成後顯示結果摘要</li>
+      </ul>
+      <h3>🎯 策略說明</h3>
+      <ul>
+        <li><span class="badge b-purple">EMA收斂</span> 多條 EMA 向中間靠攏後爆發，適合震盪轉趨勢</li>
+        <li><span class="badge b-blue">EMA回測</span> 價格回踩 EMA 支撐後反彈，順勢加速</li>
+        <li><span class="badge b-yellow">RSI反彈</span> RSI 超賣後回升，搭配 EMA 支撐確認</li>
+        <li><span class="badge b-green">MACD交叉</span> MACD 金叉或死叉，動能方向轉換</li>
+        <li><span class="badge" style="background:rgba(240,136,62,.2);color:#f0883e;">BB突破</span> 價格突破布林通道上下軌，波動率擴張</li>
+        <li><span class="badge b-blue">EMA快叉</span> 短周期 EMA 快速穿越長周期，短線動能強</li>
+        <li><span class="badge b-red">擺幅突破</span> 突破前高/前低關鍵結構位</li>
+      </ul>
+      <h3>📋 訊號欄位說明</h3>
+      <ul>
+        <li><strong>分數</strong> — 0–100 分，越高代表訊號品質越好（門檻 60 分）</li>
+        <li><strong>進場</strong> — 建議進場價格（掃描當下的收盤價）</li>
+        <li><strong>止損</strong> — 建議止損價格</li>
+        <li><strong>TP1</strong> — 第一目標價位（約 1:1.5 風報比）</li>
+      </ul>
+      <div class="tip"><strong>BTC Regime Filter：</strong>當 BTC 4H EMA15 &lt; EMA60（空頭環境）時，自動過濾山寨幣做多訊號，降低逆勢進場風險。</div>
+    </div>
 
     <div class="scan-card">
       <div>
@@ -261,6 +363,31 @@
   <div class="tab-content" id="tab-history">
     <h1>📜 交易紀錄</h1>
 
+    <button class="help-toggle" onclick="toggleHelp('help-history',this)">
+      <span class="arrow">▶</span> 功能說明
+    </button>
+    <div class="help-panel" id="help-history">
+      <h3>📜 交易紀錄說明</h3>
+      <ul>
+        <li><strong>總損益</strong> — 所有已平倉交易的累計損益</li>
+        <li><strong>平均獲利 / 平均虧損</strong> — 每筆獲利 / 虧損交易的平均金額</li>
+      </ul>
+      <h3>🔖 平倉原因說明</h3>
+      <ul>
+        <li><span class="badge b-red">SL</span> 止損平倉 — 觸碰止損價，虧損出場</li>
+        <li><span class="badge b-yellow">TP1</span> 第一目標平倉 — 僅在未達 TP2 的情況下於 TP1 出場</li>
+        <li><span class="badge b-green">TP2</span> 第二目標平倉 — 完整達到目標，最大獲利出場</li>
+        <li><span class="badge b-muted">END</span> 強制結束 — 系統重啟或手動清倉</li>
+      </ul>
+      <h3>🔍 篩選器</h3>
+      <ul>
+        <li><strong>全部</strong> — 顯示所有平倉紀錄</li>
+        <li><strong>獲利</strong> — 只顯示 PnL &gt; 0 的交易</li>
+        <li><strong>虧損</strong> — 只顯示 PnL ≤ 0 的交易</li>
+      </ul>
+      <div class="tip"><strong>注意：</strong>此頁面為虛擬倉（Paper Trading）紀錄，並非真實下單，不會影響實際資金。</div>
+    </div>
+
     <div class="grid" id="hist-stats-grid"></div>
 
     <section>
@@ -285,6 +412,13 @@
   </div>
 
 <script>
+  // ── Help panel toggle ────────────────────────────
+  function toggleHelp(id, btn) {
+    const panel = document.getElementById(id);
+    panel.classList.toggle("open");
+    btn.classList.toggle("open");
+  }
+
   // ── Helpers ──────────────────────────────────────
   function fmt(n, d=4) {
     if (n === null || n === undefined) return "—";

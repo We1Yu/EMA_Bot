@@ -6,7 +6,8 @@ Binance Futures API 介接模組
 import time
 import requests
 
-BASE_URL = "https://fapi.binance.com"
+BASE_URL      = "https://fapi.binance.com"
+COINGECKO_URL = "https://api.coingecko.com/api/v3"
 
 STABLECOIN_KEYWORDS = {
     "USDC", "BUSD", "TUSD", "FDUSD", "DAI",
