@@ -15,6 +15,7 @@ TW_TZ         = timezone(timedelta(hours=8))
 RISK_PCT      = 0.02
 MAX_POSITIONS = 4
 MAX_SAME_DIR  = 2
+TP1_FRACTION  = 0.25   # TP1 時平倉比例（取 25%，留 75% 衝 TP2）
 
 
 @dataclass
@@ -132,7 +133,7 @@ class PaperTrader:
         pos = self.positions.pop(symbol)
         if reason == "SL" and pos.tp1_hit:
             reason = "套保"
-        remaining = 0.5 if pos.tp1_hit else 1.0
+        remaining = (1.0 - TP1_FRACTION) if pos.tp1_hit else 1.0
         if pos.direction == "LONG":
             pnl = (exit_price - pos.entry_price) * pos.contracts * remaining
         else:
@@ -145,7 +146,7 @@ class PaperTrader:
     def _partial(self, symbol: str, exit_price: float, reason: str, time_ms: int) -> dict:
         pos         = self.positions[symbol]
         pos.tp1_hit = True
-        fraction    = 0.5
+        fraction    = TP1_FRACTION
         if pos.direction == "LONG":
             pnl = (exit_price - pos.entry_price) * pos.contracts * fraction
         else:
