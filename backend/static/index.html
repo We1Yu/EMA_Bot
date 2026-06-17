@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crypto Quant Platform</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg:     #0d1117;
+      --panel:  #161b22;
+      --panel2: #1c2128;
+      --border: #30363d;
+      --text:   #c9d1d9;
+      --muted:  #8b949e;
+      --green:  #3fb950;
+      --red:    #f85149;
+      --blue:   #58a6ff;
+      --yellow: #d29922;
+      --purple: #bc8cff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif;
+      background: var(--bg); color: var(--text);
+      padding: 0 20px 40px; max-width: 1400px; margin: 0 auto;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 0 14px; border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; background: var(--bg); z-index: 20;
+    }
+    .header h1 { font-size: 1.15em; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .header .sub { color: var(--muted); font-size: 0.8em; margin-top: 2px; }
+    .regime-badge {
+      padding: 4px 12px; border-radius: 20px; font-size: 0.78em; font-weight: 600;
+      border: 1px solid; cursor: default;
+    }
+    .regime-bull { color: var(--green); border-color: rgba(63,185,80,.4); background: rgba(63,185,80,.1); }
+    .regime-bear { color: var(--red);   border-color: rgba(248,81,73,.4); background: rgba(248,81,73,.1); }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex; gap: 4px; padding: 10px 0 0;
+      position: sticky; top: 57px; background: var(--bg); z-index: 19;
+      border-bottom: 1px solid var(--border); margin-bottom: 20px;
+    }
+    .tab-btn {
+      background: none; border: none; color: var(--muted);
+      padding: 8px 18px; font-size: 0.9em; font-weight: 500;
+      cursor: pointer; border-bottom: 2px solid transparent;
+      border-radius: 6px 6px 0 0; font-family: inherit;
+      transition: all .15s;
+    }
+    .tab-btn.active { color: var(--text); border-bottom-color: var(--blue); background: var(--panel); }
+    .tab-btn:hover:not(.active) { color: var(--text); background: rgba(255,255,255,.03); }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; animation: fadein .2s ease; }
+    @keyframes fadein { from { opacity:0; transform:translateY(4px); } to { opacity:1; } }
+
+    /* ── Stat grid ── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px; margin-bottom: 18px;
+    }
+    .stat-card {
+      background: linear-gradient(180deg, var(--panel2), var(--panel));
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 12px 14px; transition: border-color .15s;
+    }
+    .stat-card:hover { border-color: #484f58; }
+    .stat-card .lbl { color: var(--muted); font-size: 0.7em; text-transform: uppercase; letter-spacing: .06em; }
+    .stat-card .val { font-size: 1.4em; font-weight: 700; margin-top: 5px; }
+    .pos { color: var(--green); } .neg { color: var(--red); }
+
+    /* ── Chart ── */
+    .chart-box {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 16px; margin-bottom: 18px;
+    }
+    .chart-box .lbl { color: var(--muted); font-size: 0.7em; text-transform: uppercase; letter-spacing:.06em; margin-bottom: 8px; }
+    #equityChart { max-height: 190px; }
+
+    /* ── Position cards ── */
+    .pos-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(265px, 1fr));
+      gap: 10px;
+    }
+    .pos-card {
+      background: linear-gradient(180deg, var(--panel2), var(--panel));
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 13px 15px; transition: border-color .15s;
+    }
+    .pos-card:hover { border-color: #484f58; }
+    .pos-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .pos-card-head .sym { font-size: 1em; font-weight: 700; }
+    .pos-upnl { text-align: center; padding: 6px 0 10px; font-size: 1.25em; font-weight: 700; }
+    .pos-upnl .pct { display: block; font-size: 0.58em; color: var(--muted); margin-top: 2px; }
+    .prow { display: flex; justify-content: space-between; font-size: 0.82em; padding: 4px 0; border-bottom: 1px dashed var(--border); }
+    .prow:last-child { border-bottom: none; }
+    .prow .lbl { color: var(--muted); }
+    .progress-wrap { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin: 6px 0 10px; }
+    .progress-fill { height: 100%; border-radius: 2px; transition: width .4s; }
+
+    /* ── Tables ── */
+    .scroll-x {
+      overflow-x: auto; border-radius: 10px;
+      border: 1px solid var(--border); background: var(--panel);
+      margin-bottom: 18px;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.84em; }
+    th, td { text-align: left; padding: 8px 11px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    th { color: var(--muted); font-weight: 500; font-size: 0.78em; text-transform: uppercase; letter-spacing:.03em; }
+    tbody tr { transition: background .1s; }
+    tbody tr:hover td { background: rgba(255,255,255,.025); }
+    tbody tr:last-child td { border-bottom: none; }
+
+    /* ── Tags / chips ── */
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 5px; font-size: 0.78em; font-weight: 600; }
+    .tag-LONG  { background: rgba(63,185,80,.15);  color: var(--green); }
+    .tag-SHORT { background: rgba(248,81,73,.15);  color: var(--red); }
+    .tag-SL    { background: rgba(248,81,73,.15);  color: var(--red); }
+    .tag-TP1   { background: rgba(210,153,34,.18); color: var(--yellow); }
+    .tag-TP2   { background: rgba(63,185,80,.15);  color: var(--green); }
+    .tag-套保  { background: rgba(139,148,158,.15);color: var(--muted); }
+    .chip { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; font-weight: 500; }
+
+    /* ── Filter bar ── */
+    .filter-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .fbtn {
+      background: var(--panel2); border: 1px solid var(--border);
+      color: var(--muted); padding: 4px 13px; font-size: 0.8em;
+      font-weight: 600; border-radius: 20px; cursor: pointer; font-family: inherit;
+      transition: all .15s;
+    }
+    .fbtn:hover { border-color: #484f58; color: var(--text); }
+    .fbtn.active { color: var(--text); border-color: var(--blue); background: rgba(88,166,255,.12); }
+    .fbtn.active.g { border-color: var(--green); background: rgba(63,185,80,.1);  color: var(--green); }
+    .fbtn.active.r { border-color: var(--red);   background: rgba(248,81,73,.1);  color: var(--red); }
+
+    /* ── Scan / action cards ── */
+    .action-card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 18px; margin-bottom: 14px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    }
+    .action-card .desc { color: var(--muted); font-size: 0.83em; margin-top: 3px; }
+    .primary-btn {
+      background: rgba(88,166,255,.15); border: 1px solid rgba(88,166,255,.35);
+      color: var(--blue); padding: 7px 18px; border-radius: 8px;
+      font-family: inherit; font-size: 0.88em; font-weight: 600;
+      cursor: pointer; white-space: nowrap; transition: all .15s;
+    }
+    .primary-btn:hover:not(:disabled) { background: rgba(88,166,255,.25); }
+    .primary-btn:disabled { opacity: .45; cursor: not-allowed; }
+    .notice {
+      border-radius: 8px; padding: 10px 14px;
+      border: 1px solid; font-size: 0.84em; margin-bottom: 12px;
+    }
+    .notice-info  { background: rgba(88,166,255,.08);  border-color: rgba(88,166,255,.25); color: var(--blue); }
+    .notice-ok    { background: rgba(63,185,80,.08);   border-color: rgba(63,185,80,.25);  color: var(--green); }
+    .notice-err   { background: rgba(248,81,73,.08);   border-color: rgba(248,81,73,.25);  color: var(--red); }
+    .notice-warn  { background: rgba(210,153,34,.08);  border-color: rgba(210,153,34,.25); color: var(--yellow); }
+
+    /* ── Backtest compare ── */
+    .bt-compare {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px;
+    }
+    .bt-panel {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 16px;
+    }
+    .bt-panel h3 { font-size: 0.88em; margin-bottom: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+    .bt-row { display: flex; justify-content: space-between; font-size: 0.85em; padding: 5px 0; border-bottom: 1px dashed var(--border); }
+    .bt-row:last-child { border-bottom: none; }
+    .bt-row .k { color: var(--muted); }
+
+    /* ── Section header ── */
+    .sec-head { font-size: 0.9em; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 10px; }
+
+    .empty { color: var(--muted); padding: 24px 0; text-align: center; font-size: 0.88em; }
+    .spin { display: inline-block; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>📊 Crypto Quant Platform</h1>
+    <div class="sub" id="header-sub">Binance Futures · 載入中...</div>
+  </div>
+  <div id="regime-badge" class="regime-badge regime-bull" title="BTC 4H EMA15 vs EMA60">BTC Regime —</div>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="account">帳戶</button>
+  <button class="tab-btn" data-tab="signals">訊號</button>
+  <button class="tab-btn" data-tab="scan">掃描</button>
+  <button class="tab-btn" data-tab="backtest">回測</button>
+</div>
+
+<!-- ════════════ 帳戶 ════════════ -->
+<div class="tab-pane active" id="pane-account">
+  <div class="stat-grid" id="stat-grid"></div>
+
+  <div class="chart-box">
+    <div class="lbl">資金曲線</div>
+    <canvas id="equityChart"></canvas>
+  </div>
+
+  <div class="sec-head">持倉中</div>
+  <div class="pos-grid" id="pos-grid"></div>
+  <div class="empty" id="pos-empty" style="display:none">目前沒有持倉</div>
+
+  <div class="sec-head" style="margin-top:24px;">最近交易</div>
+  <div class="filter-bar">
+    <button class="fbtn active" onclick="setTradeFilter('all',this)">全部</button>
+    <button class="fbtn g"      onclick="setTradeFilter('win',this)">獲利</button>
+    <button class="fbtn r"      onclick="setTradeFilter('loss',this)">虧損</button>
+  </div>
+  <div class="scroll-x">
+    <table id="trade-table">
+      <thead><tr>
+        <th>幣種</th><th>方向</th><th>策略</th><th>出場</th>
+        <th>進場</th><th>出場價</th><th>損益</th><th>評分</th><th>時間</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div class="empty" id="trade-empty" style="display:none">尚無交易紀錄</div>
+</div>
+
+<!-- ════════════ 訊號 ════════════ -->
+<div class="tab-pane" id="pane-signals">
+  <div style="margin-bottom:14px;display:flex;gap:28px;align-items:flex-end;flex-wrap:wrap;">
+    <div>
+      <div class="sec-head" style="margin:0 0 6px;">策略</div>
+      <div class="filter-bar">
+        <button class="fbtn active" onclick="setSigFilter('strategy','',this)">全部</button>
+        <button class="fbtn" onclick="setSigFilter('strategy','EMA_CONVERGENCE',this)">EMA收斂</button>
+        <button class="fbtn" onclick="setSigFilter('strategy','EMA_PULLBACK',this)">EMA回測</button>
+        <button class="fbtn" onclick="setSigFilter('strategy','STRUCTURE_BREAKOUT',this)">結構突破</button>
+      </div>
+    </div>
+    <div>
+      <div class="sec-head" style="margin:0 0 6px;">方向</div>
+      <div class="filter-bar">
+        <button class="fbtn active" onclick="setSigFilter('direction','',this)">全部</button>
+        <button class="fbtn g" onclick="setSigFilter('direction','LONG',this)">多單</button>
+        <button class="fbtn r" onclick="setSigFilter('direction','SHORT',this)">空單</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stat-grid" id="sig-stat-grid" style="margin-bottom:14px;"></div>
+
+  <div class="scroll-x">
+    <table id="sig-table">
+      <thead><tr>
+        <th>時間</th><th>幣種</th><th>策略</th><th>方向</th>
+        <th>評分</th><th>進場</th><th>止損</th><th>TP1</th><th>TP2</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div class="empty" id="sig-empty" style="display:none">尚無訊號</div>
+</div>
+
+<!-- ════════════ 掃描 ════════════ -->
+<div class="tab-pane" id="pane-scan">
+  <div class="action-card">
+    <div>
+      <div style="font-weight:600;">全市場掃描</div>
+      <div class="desc">對所有 Binance Futures USDT 永續合約執行三策略掃描，達標訊號自動開虛擬倉。</div>
+    </div>
+    <button class="primary-btn" id="scan-btn" onclick="triggerScan()">▶ 立即掃描</button>
+  </div>
+  <div id="scan-notice" style="display:none"></div>
+
+  <div class="sec-head">BTC Regime Filter</div>
+  <div class="action-card" style="flex-direction:column;align-items:flex-start;gap:8px;">
+    <div id="regime-detail" style="font-size:0.88em;color:var(--muted);">載入中...</div>
+    <div style="font-size:0.82em;color:var(--muted);">空頭環境（EMA15 &lt; EMA60）時封鎖所有山寨幣多單；BTC / ETH 不受限。</div>
+  </div>
+
+  <div id="scan-results-wrap" style="display:none">
+    <div class="sec-head">本次掃描結果</div>
+    <div class="scroll-x">
+      <table id="scan-result-table">
+        <thead><tr>
+          <th>幣種</th><th>策略</th><th>方向</th><th>評分</th>
+          <th>進場</th><th>止損</th><th>TP1</th><th>TP2</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="empty" id="scan-result-empty" style="display:none">本次掃描無達標訊號</div>
+  </div>
+</div>
+
+<!-- ════════════ 回測 ════════════ -->
+<div class="tab-pane" id="pane-backtest">
+  <div class="action-card">
+    <div>
+      <div style="font-weight:600;">Regime Filter 對照回測</div>
+      <div class="desc">逐 4H Bar 模擬，比較有 / 無 BTC Regime Filter 的勝率與損益差異。</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <label style="font-size:0.82em;color:var(--muted);display:flex;align-items:center;gap:5px;">
+        <input type="number" id="bt-symbols" value="30" min="1" max="300"
+          style="width:55px;background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:4px 6px;font-size:1em;">
+        幣種數
+      </label>
+      <button class="primary-btn" id="bt-btn" onclick="triggerBacktest()">▶ 執行回測</button>
+    </div>
+  </div>
+  <div id="bt-notice" style="display:none"></div>
+  <div id="bt-results" style="display:none"></div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+//  Helpers
+// ══════════════════════════════════════════════
+const BASE = "";
+
+function fmt(n, d = 2) {
+  if (n === null || n === undefined) return "—";
+  return Number(n).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+function fmtPrice(v) {
+  if (v === null || v === undefined) return "—";
+  const n = Math.abs(Number(v));
+  const d = n >= 1000 ? 2 : n >= 1 ? 4 : 6;
+  return Number(v).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+function pnlCls(v) { return v > 0 ? "pos" : v < 0 ? "neg" : ""; }
+
+function dirTag(d) {
+  return `<span class="tag tag-${d}">${d === "LONG" ? "多" : "空"} ${d}</span>`;
+}
+function reasonTag(r) {
+  const key = r === "套保" ? "套保" : r;
+  return `<span class="tag tag-${key}">${r}</span>`;
+}
+const STRAT_MAP = {
+  EMA_CONVERGENCE:  ["#8957e5", "EMA收斂"],
+  EMA_PULLBACK:     ["#58a6ff", "EMA回測"],
+  STRUCTURE_BREAKOUT: ["#f0883e", "結構突破"],
+};
+function stratChip(s) {
+  const [c, l] = STRAT_MAP[s] || ["#8b949e", s || "—"];
+  return `<span class="chip" style="background:${c}22;color:${c};">${l}</span>`;
+}
+
+function notice(id, msg, type = "info") {
+  const el = document.getElementById(id);
+  el.className = `notice notice-${type}`;
+  el.innerHTML = msg;
+  el.style.display = "block";
+}
+function hideNotice(id) { document.getElementById(id).style.display = "none"; }
+
+// ══════════════════════════════════════════════
+//  Equity Chart
+// ══════════════════════════════════════════════
+let _chart = null;
+function drawChart(labels, data) {
+  if (_chart) _chart.destroy();
+  const ctx = document.getElementById("equityChart").getContext("2d");
+  const grad = ctx.createLinearGradient(0, 0, 0, 190);
+  grad.addColorStop(0, "rgba(88,166,255,.18)");
+  grad.addColorStop(1, "rgba(88,166,255,.0)");
+  _chart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{ data, borderColor: "#58a6ff", backgroundColor: grad, borderWidth: 1.5, fill: true, pointRadius: data.length > 50 ? 0 : 3, tension: .3 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => " $" + c.parsed.y.toLocaleString() } } },
+      scales: {
+        x: { ticks: { color: "#8b949e", maxTicksLimit: 8, font: { size: 11 } }, grid: { color: "#21262d" } },
+        y: { ticks: { color: "#8b949e", callback: v => "$" + v.toLocaleString(), font: { size: 11 } }, grid: { color: "#21262d" } }
+      }
+    }
+  });
+}
+
+// ══════════════════════════════════════════════
+//  Account tab
+// ══════════════════════════════════════════════
+let _allTrades = [];
+let _tradeFilter = "all";
+
+function setTradeFilter(f, btn) {
+  _tradeFilter = f;
+  document.querySelectorAll("#pane-account .filter-bar .fbtn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  renderTrades();
+}
+
+function renderTrades() {
+  const data = _tradeFilter === "win"  ? _allTrades.filter(t => t.pnl > 0)
+             : _tradeFilter === "loss" ? _allTrades.filter(t => t.pnl <= 0)
+             : _allTrades;
+  const tbody = document.querySelector("#trade-table tbody");
+  const empty = document.getElementById("trade-empty");
+  if (!data.length) {
+    tbody.innerHTML = "";
+    empty.style.display = "block";
+  } else {
+    empty.style.display = "none";
+    tbody.innerHTML = data.map(t => `<tr>
+      <td><strong>${t.symbol}</strong></td>
+      <td>${dirTag(t.direction)}</td>
+      <td>${stratChip(t.strategy)}</td>
+      <td>${reasonTag(t.reason)}</td>
+      <td>${fmtPrice(t.entry)}</td>
+      <td>${fmtPrice(t.exit)}</td>
+      <td class="${pnlCls(t.pnl)}">$${fmt(t.pnl)}</td>
+      <td><span style="font-size:.8em;opacity:.8">${t.score}</span></td>
+      <td style="color:var(--muted);font-size:.8em">${t.close_time || "—"}</td>
+    </tr>`).join("");
+  }
+}
+
+async function loadAccount() {
+  try {
+    const d = await fetch(BASE + "/api/account/").then(r => r.json());
+    const s = d.stats;
+
+    document.getElementById("header-sub").textContent =
+      `Binance Futures · 持倉中: ${s.open_positions ?? 0} · ${new Date().toLocaleTimeString("zh-TW")}`;
+
+    const ret = s.total_return_pct ?? 0;
+    document.getElementById("stat-grid").innerHTML = [
+      ["帳戶餘額",   `$${fmt(s.current_balance)}`,            ""],
+      ["總損益",     `$${fmt(s.total_pnl ?? 0)} (${fmt(ret)}%)`, pnlCls(s.total_pnl ?? 0)],
+      ["未實現損益", `$${fmt(s.total_upnl ?? 0)}`,             pnlCls(s.total_upnl ?? 0)],
+      ["持倉中",     s.open_positions ?? 0,                   ""],
+      ["勝率",       `${fmt(s.win_rate_pct ?? 0, 1)}%`,       ""],
+      ["最大回撤",   `${fmt(s.max_drawdown_pct ?? 0)}%`,      "neg"],
+      ["獲利因子",   s.profit_factor ?? "—",                  ""],
+      ["已平倉",     s.full_closes ?? 0,                      ""],
+    ].map(([l, v, c]) =>
+      `<div class="stat-card"><div class="lbl">${l}</div><div class="val ${c}">${v}</div></div>`
+    ).join("");
+
+    if (d.equity_curve?.labels) drawChart(d.equity_curve.labels, d.equity_curve.data);
+
+    const pg = document.getElementById("pos-grid");
+    if (!d.positions.length) {
+      pg.innerHTML = "";
+      document.getElementById("pos-empty").style.display = "block";
+    } else {
+      document.getElementById("pos-empty").style.display = "none";
+      pg.innerHTML = d.positions.map(p => {
+        const r = p.progress_r ?? 0;
+        const pct = Math.min(Math.max((r + 1) / 3.5 * 100, 0), 100);
+        const col = r < 0 ? "var(--red)" : r > 1.5 ? "var(--green)" : "var(--blue)";
+        return `<div class="pos-card">
+          <div class="pos-card-head">
+            <span class="sym">${p.symbol}</span>
+            ${dirTag(p.direction)}
+          </div>
+          <div class="pos-upnl ${pnlCls(p.upnl)}">
+            ${p.upnl === null ? "—" : `$${fmt(p.upnl)}`}
+            <span class="pct">${p.upnl !== null ? `(${fmt(p.upnl_pct)}%)` : ""}</span>
+          </div>
+          <div class="progress-wrap"><div class="progress-fill" style="width:${pct}%;background:${col}"></div></div>
+          <div class="prow"><span class="lbl">策略</span><span>${stratChip(p.strategy)}</span></div>
+          <div class="prow"><span class="lbl">評分</span><span>${p.score}</span></div>
+          <div class="prow"><span class="lbl">進場價</span><span>${fmtPrice(p.entry)}</span></div>
+          <div class="prow"><span class="lbl">現價</span><span>${fmtPrice(p.cur_price)}</span></div>
+          <div class="prow"><span class="lbl">止損</span><span style="color:var(--red)">${fmtPrice(p.stop_loss)}</span></div>
+          <div class="prow"><span class="lbl">TP1</span><span style="color:var(--yellow)">${fmtPrice(p.target1)}${p.tp1_hit ? " <b style='color:var(--green)'>✓</b>" : ""}</span></div>
+          <div class="prow"><span class="lbl">TP2</span><span style="color:var(--green)">${fmtPrice(p.target2)}</span></div>
+          <div class="prow"><span class="lbl">開倉</span><span style="color:var(--muted);font-size:.9em">${p.open_time}</span></div>
+          <div class="prow"><span class="lbl">持倉時長</span><span>${p.duration}</span></div>
+        </div>`;
+      }).join("");
+    }
+
+    _allTrades = d.trades || [];
+    renderTrades();
+  } catch (e) {
+    document.getElementById("header-sub").textContent = "載入失敗：" + e;
+  }
+}
+
+// ══════════════════════════════════════════════
+//  Signals tab
+// ══════════════════════════════════════════════
+let _sigFilters = { strategy: "", direction: "" };
+
+function setSigFilter(key, val, btn) {
+  _sigFilters[key] = val;
+  const group = btn.closest(".filter-bar");
+  group.querySelectorAll(".fbtn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  loadSignals();
+}
+
+async function loadSignals() {
+  try {
+    const params = new URLSearchParams({ limit: 200 });
+    if (_sigFilters.strategy)  params.set("strategy",  _sigFilters.strategy);
+    if (_sigFilters.direction) params.set("direction", _sigFilters.direction);
+
+    const [sigs, stats] = await Promise.all([
+      fetch(BASE + "/api/signals/history?" + params).then(r => r.json()),
+      fetch(BASE + "/api/signals/stats").then(r => r.json()),
+    ]);
+
+    // stats mini-cards
+    document.getElementById("sig-stat-grid").innerHTML = [
+      ["總訊號數", stats.total ?? 0, ""],
+      ["EMA收斂",  stats.by_strategy?.EMA_CONVERGENCE  ?? 0, ""],
+      ["EMA回測",  stats.by_strategy?.EMA_PULLBACK      ?? 0, ""],
+      ["結構突破", stats.by_strategy?.STRUCTURE_BREAKOUT ?? 0, ""],
+      ["多單",     stats.by_direction?.LONG  ?? 0, "pos"],
+      ["空單",     stats.by_direction?.SHORT ?? 0, "neg"],
+      ["平均評分", stats.avg_score ?? "—", ""],
+    ].map(([l, v, c]) =>
+      `<div class="stat-card"><div class="lbl">${l}</div><div class="val ${c}">${v}</div></div>`
+    ).join("");
+
+    const tbody = document.querySelector("#sig-table tbody");
+    const empty = document.getElementById("sig-empty");
+    if (!sigs.length) {
+      tbody.innerHTML = "";
+      empty.style.display = "block";
+    } else {
+      empty.style.display = "none";
+      tbody.innerHTML = sigs.map(s => `<tr>
+        <td style="color:var(--muted);font-size:.8em">${s.time || "—"}</td>
+        <td><strong>${s.symbol}</strong></td>
+        <td>${stratChip(s.strategy)}</td>
+        <td>${dirTag(s.direction)}</td>
+        <td><span style="background:rgba(88,166,255,.14);color:var(--blue);padding:2px 8px;border-radius:4px;font-size:.8em">${s.score}</span></td>
+        <td>${fmtPrice(s.entry)}</td>
+        <td style="color:var(--red)">${fmtPrice(s.stop_loss)}</td>
+        <td style="color:var(--yellow)">${fmtPrice(s.target1)}</td>
+        <td style="color:var(--green)">${fmtPrice(s.target2)}</td>
+      </tr>`).join("");
+    }
+  } catch (e) {}
+}
+
+// ══════════════════════════════════════════════
+//  Scan tab
+// ══════════════════════════════════════════════
+async function loadRegime() {
+  try {
+    const d = await fetch(BASE + "/api/scan/btc-regime").then(r => r.json());
+    const badge = document.getElementById("regime-badge");
+    badge.textContent = `BTC Regime: ${d.label}`;
+    badge.className = "regime-badge " + (d.is_bull ? "regime-bull" : "regime-bear");
+
+    document.getElementById("regime-detail").innerHTML =
+      `<strong>狀態：</strong>${d.label}&nbsp;&nbsp;
+       <strong>EMA15：</strong>${d.btc_ema15 ?? "—"}&nbsp;&nbsp;
+       <strong>EMA60：</strong>${d.btc_ema60 ?? "—"}&nbsp;&nbsp;
+       <span style="color:var(--muted)">${d.checked_at}</span>`;
+  } catch (e) {}
+}
+
+let _scanPoll = null;
+async function triggerScan() {
+  const btn = document.getElementById("scan-btn");
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spin">⟳</span> 掃描中...`;
+  notice("scan-notice", "⏳ 全市場掃描進行中，請稍候（約 2–5 分鐘）...", "info");
+  document.getElementById("scan-results-wrap").style.display = "none";
+
+  try {
+    const r = await fetch(BASE + "/api/scan/", { method: "POST" }).then(r => r.json());
+    if (r.error) { notice("scan-notice", "❌ " + r.error, "err"); btn.disabled = false; btn.textContent = "▶ 立即掃描"; return; }
+  } catch (e) { notice("scan-notice", "❌ 請求失敗：" + e, "err"); btn.disabled = false; btn.textContent = "▶ 立即掃描"; return; }
+
+  clearInterval(_scanPoll);
+  _scanPoll = setInterval(async () => {
+    try {
+      const st = await fetch(BASE + "/api/scan/status").then(r => r.json());
+      if (st.running) return;
+      clearInterval(_scanPoll);
+      btn.disabled = false; btn.textContent = "▶ 立即掃描";
+
+      if (st.error) { notice("scan-notice", "❌ 錯誤：" + st.error, "err"); return; }
+
+      const res = st.result || {};
+      const regime = res.btc_regime_bull ? "多頭" : "空頭（山寨多單封鎖）";
+      notice("scan-notice",
+        `✅ 掃描完成 ${res.scanned_at || ""} — Regime: <strong>${regime}</strong> · 達標訊號 <strong>${res.found ?? 0}</strong> 個 · 新開虛擬倉 <strong>${res.opened ?? 0}</strong> 筆`,
+        "ok");
+
+      const sigs = res.signals || [];
+      const wrap = document.getElementById("scan-results-wrap");
+      wrap.style.display = "block";
+      const tbody = document.querySelector("#scan-result-table tbody");
+      const empty = document.getElementById("scan-result-empty");
+      if (!sigs.length) { tbody.innerHTML = ""; empty.style.display = "block"; }
+      else {
+        empty.style.display = "none";
+        tbody.innerHTML = sigs.map(s => `<tr>
+          <td><strong>${s.symbol}</strong></td>
+          <td>${stratChip(s.strategy)}</td>
+          <td>${dirTag(s.direction)}</td>
+          <td><span style="background:rgba(88,166,255,.14);color:var(--blue);padding:2px 8px;border-radius:4px;font-size:.8em">${s.score}</span></td>
+          <td>${fmtPrice(s.entry)}</td>
+          <td style="color:var(--red)">${fmtPrice(s.stop_loss)}</td>
+          <td style="color:var(--yellow)">${fmtPrice(s.target1)}</td>
+          <td style="color:var(--green)">${fmtPrice(s.target2)}</td>
+        </tr>`).join("");
+      }
+
+      loadAccount(); loadSignals(); loadRegime();
+    } catch (e) {}
+  }, 4000);
+}
+
+// ══════════════════════════════════════════════
+//  Backtest tab
+// ══════════════════════════════════════════════
+function renderBtResult(r) {
+  const w  = r.with_filter    || {};
+  const wo = r.without_filter || {};
+  const diff_wr  = r.win_rate_diff  ?? 0;
+  const diff_pnl = r.pnl_diff       ?? 0;
+
+  document.getElementById("bt-results").innerHTML = `
+    <div class="notice notice-${diff_wr >= 0 ? "ok" : "warn"}" style="margin-bottom:12px">
+      Regime Filter 攔截 <strong>${r.blocked ?? 0}</strong> 個山寨多單訊號 ·
+      勝率差 <strong>${diff_wr >= 0 ? "+" : ""}${fmt(diff_wr, 1)}%</strong> ·
+      損益差 <strong class="${pnlCls(diff_pnl)}">$${fmt(diff_pnl)}</strong>
+      · 測試 ${r.symbols_tested ?? "?"} 幣種 / ${r.bars_simulated ?? "?"} 根 4H Bar
+    </div>
+    <div class="bt-compare">
+      ${btPanel("有 Regime Filter", w, r.signals_w)}
+      ${btPanel("無 Regime Filter", wo, r.signals_wo)}
+    </div>`;
+  document.getElementById("bt-results").style.display = "block";
+}
+
+function btPanel(title, s, sigs) {
+  const rows = [
+    ["訊號觸發", sigs ?? "—"],
+    ["完整平倉", s.full_closes ?? 0],
+    ["勝 / 敗",  `${s.wins ?? 0} / ${s.losses ?? 0}`],
+    ["勝率",     `${fmt(s.win_rate_pct ?? 0, 1)}%`],
+    ["總損益",   `$${fmt(s.total_pnl ?? 0)}`],
+    ["最大回撤", `${fmt(s.max_drawdown_pct ?? 0)}%`],
+    ["獲利因子", s.profit_factor ?? "N/A"],
+    ["平均獲利", `$${fmt(s.avg_win ?? 0)}`],
+    ["平均虧損", `$${fmt(s.avg_loss ?? 0)}`],
+  ];
+  return `<div class="bt-panel">
+    <h3>${title}</h3>
+    ${rows.map(([k, v]) => `<div class="bt-row"><span class="k">${k}</span><span>${v}</span></div>`).join("")}
+  </div>`;
+}
+
+async function loadLastBacktest() {
+  try {
+    const d = await fetch(BASE + "/api/backtest/").then(r => r.json());
+    if (d.result) renderBtResult(d.result);
+  } catch (e) {}
+}
+
+let _btPoll = null;
+async function triggerBacktest() {
+  const btn = document.getElementById("bt-btn");
+  const maxSym = document.getElementById("bt-symbols").value || 30;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spin">⟳</span> 回測中...`;
+  notice("bt-notice", `⏳ 回測進行中（${maxSym} 個幣種），可能需要數分鐘...`, "info");
+  document.getElementById("bt-results").style.display = "none";
+
+  try {
+    await fetch(BASE + `/api/backtest/?max_symbols=${maxSym}`, { method: "POST" });
+  } catch (e) { notice("bt-notice", "❌ " + e, "err"); btn.disabled = false; btn.textContent = "▶ 執行回測"; return; }
+
+  clearInterval(_btPoll);
+  _btPoll = setInterval(async () => {
+    try {
+      const st = await fetch(BASE + "/api/backtest/status").then(r => r.json());
+      if (st.running) return;
+      clearInterval(_btPoll);
+      btn.disabled = false; btn.textContent = "▶ 執行回測";
+
+      if (st.error) { notice("bt-notice", "❌ " + st.error, "err"); return; }
+      hideNotice("bt-notice");
+      const d = await fetch(BASE + "/api/backtest/").then(r => r.json());
+      if (d.result) renderBtResult(d.result);
+    } catch (e) {}
+  }, 5000);
+}
+
+// ══════════════════════════════════════════════
+//  Tab switching
+// ══════════════════════════════════════════════
+const TAB_LOAD = {
+  account:  () => loadAccount(),
+  signals:  () => loadSignals(),
+  scan:     () => loadRegime(),
+  backtest: () => loadLastBacktest(),
+};
+
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    const tab = btn.dataset.tab;
+    document.getElementById("pane-" + tab).classList.add("active");
+    TAB_LOAD[tab]?.();
+  });
+});
+
+// ══════════════════════════════════════════════
+//  Init
+// ══════════════════════════════════════════════
+loadAccount();
+loadRegime();
+setInterval(loadAccount, 5 * 60 * 1000);
+setInterval(loadRegime,  5 * 60 * 1000);
+</script>
+</body>
+</html>
