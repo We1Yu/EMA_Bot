@@ -3,8 +3,11 @@ Binance Futures API 介接模組
 負責取得合約清單、K 線資料與現價
 """
 
+import logging
 import time
 import requests
+
+logger = logging.getLogger(__name__)
 
 BASE_URL      = "https://fapi.binance.com"
 COINGECKO_URL = "https://api.coingecko.com/api/v3"
@@ -25,7 +28,7 @@ def _get(url: str, params: dict) -> dict | list | None:
     now = time.time()
     if now < _rate_limit_until:
         remaining = int(_rate_limit_until - now)
-        print(f"[Binance] 速率限制中，還需等待 {remaining} 秒")
+        logger.warning("速率限制中，還需等待 %d 秒", remaining)
         return None
 
     for attempt in range(MAX_RETRIES):
@@ -34,20 +37,20 @@ def _get(url: str, params: dict) -> dict | list | None:
             if resp.status_code == 429:
                 retry_after = int(resp.headers.get("Retry-After", 60))
                 _rate_limit_until = time.time() + retry_after
-                print(f"[Binance] 速率限制（429），{retry_after} 秒後解除")
+                logger.warning("速率限制（429），%d 秒後解除", retry_after)
                 return None
             if resp.status_code == 418:
                 _rate_limit_until = time.time() + 3600
-                print("[Binance] IP 被封鎖（418），等待 1 小時")
+                logger.error("IP 被封鎖（418），等待 1 小時")
                 return None
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
             if attempt < MAX_RETRIES - 1:
-                print(f"[Binance] 請求失敗 (第{attempt+1}次)：{e}，{RETRY_DELAY}秒後重試")
+                logger.warning("請求失敗（第 %d 次）：%s，%d 秒後重試", attempt + 1, e, RETRY_DELAY)
                 time.sleep(RETRY_DELAY)
             else:
-                print(f"[Binance] 請求失敗（已重試 {MAX_RETRIES} 次）：{e}")
+                logger.error("請求失敗（已重試 %d 次）：%s", MAX_RETRIES, e)
     return None
 
 

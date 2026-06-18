@@ -3,6 +3,7 @@ Crypto Quant Signal Platform — FastAPI 進入點
 啟動：uvicorn app.main:app --reload（從 backend/ 目錄執行）
 """
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -11,13 +12,22 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from app.api import account, signals, scan, backtest
+from app.core.logging_config import setup_logging
 
 STATIC_DIR = Path(__file__).parent.parent / "static"
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    setup_logging()
+    yield
+
 
 app = FastAPI(
     title="Crypto Quant Signal Platform API",
     description="整合 EMA 收斂/回測/結構突破策略、5 維度評分、紙上帳戶的 Binance 量化交易輔助平台",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

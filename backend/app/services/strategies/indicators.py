@@ -177,11 +177,11 @@ def calc_adx(candles: list[dict], period: int = 14) -> list[float | None]:
     ndm_arr = [0.0] * n
 
     for i in range(1, n):
-        h, l   = candles[i]["high"],   candles[i]["low"]
+        h, lo  = candles[i]["high"],   candles[i]["low"]
         ph, pl = candles[i-1]["high"], candles[i-1]["low"]
         pc     = candles[i-1]["close"]
-        tr_arr[i]  = max(h - l, abs(h - pc), abs(l - pc))
-        up, down   = h - ph, pl - l
+        tr_arr[i]  = max(h - lo, abs(h - pc), abs(lo - pc))
+        up, down   = h - ph, pl - lo
         pdm_arr[i] = up   if (up > down   and up   > 0) else 0.0
         ndm_arr[i] = down if (down > up   and down > 0) else 0.0
 

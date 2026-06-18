@@ -83,12 +83,13 @@ def main():
         print("取得所有合約清單...")
         symbols = get_contracts()
         if not symbols:
-            print("[錯誤] 無法取得合約清單"); return
+            print("[錯誤] 無法取得合約清單")
+            return
     else:
         symbols = DEFAULT_SYMBOLS
 
     print("=" * 62)
-    print(f"  Binance Futures 歷史資料下載")
+    print("  Binance Futures 歷史資料下載")
     print(f"  目標：{len(symbols)} 個幣種  4h×{TARGET_4H}根  1h×{TARGET_1H}根")
     print(f"  存放目錄：{KLINES_CACHE_DIR}")
     print("=" * 62)
@@ -106,7 +107,7 @@ def main():
     elapsed = time.time() - t0
     print(f"\n{'='*62}")
     print(f"  完成  成功：{success}  失敗：{fail}  耗時：{elapsed:.0f} 秒")
-    print(f"  執行回測：python -m app.services.backtest.engine")
+    print("  執行回測：python -m app.services.backtest.engine")
     print(f"{'='*62}")
 
 

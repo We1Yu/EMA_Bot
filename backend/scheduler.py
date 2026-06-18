@@ -7,10 +7,12 @@
 
 import csv
 import json
+import logging
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+from app.core.logging_config import setup_logging
 from app.services.data_ingestion.binance import get_contracts, get_klines
 from app.services.strategies.scanner     import scan_symbol
 from app.services.strategies.indicators  import ema_snapshot
@@ -20,6 +22,8 @@ from app.core.config import (
     DATA_DIR, STATE_FILE, SIGNALS_LOG, SIGNALS_JSONL,
     EQUITY_JSONL, TRADE_RECORDS_DIR, CLOSED_TRADES_JSONL, PAPER_FILE,
 )
+
+logger = logging.getLogger(__name__)
 
 TW_TZ           = timezone(timedelta(hours=8))
 TRADE_CSV       = DATA_DIR / "trade_history.csv"
@@ -126,7 +130,7 @@ def archive_session(start_ts: float, stop_ts: float, trader: PaperTrader) -> Non
     ws2.column_dimensions["B"].width = 22
 
     wb.save(dest)
-    print(f"[ARCHIVE] 交易紀錄已存至 data/trade_records/{file_name}")
+    logger.info("交易紀錄已存至 data/trade_records/%s", file_name)
 
 
 # ── 去重狀態管理 ──────────────────────────────────────────────
@@ -243,7 +247,7 @@ def next_4h_close_utc() -> datetime:
     return candidate
 
 
-def _print_open_detail(result: dict, score: float) -> None:
+def _log_open_detail(result: dict, score: float) -> None:
     strat_map = {
         "EMA_CONVERGENCE":    "EMA收斂突破",
         "EMA_PULLBACK":       "EMA30回測",
@@ -257,29 +261,32 @@ def _print_open_detail(result: dict, score: float) -> None:
     conf       = result["confirm_1h"]
     direction  = result["direction"]
 
-    print(f"\n  ┌─ [開倉] {result['symbol']:22s} {direction:5s}  score={score}  策略={strat_name}")
-    print(f"  │  進場={lvl['entry']:.6g}  SL={lvl['stop_loss']:.6g}  TP1={lvl['target1']:.6g}  TP2={lvl['target2']:.6g}")
+    logger.info("┌─ [開倉] %-22s %-5s  score=%s  策略=%s",
+                result["symbol"], direction, score, strat_name)
+    logger.info("│  進場=%.6g  SL=%.6g  TP1=%.6g  TP2=%.6g",
+                lvl["entry"], lvl["stop_loss"], lvl["target1"], lvl["target2"])
     if strategy == "EMA_CONVERGENCE":
-        print(f"  │  帶寬={conv['bandwidth']:.2f}% 壓縮{conv['compression_bars']}根  量比={vol:.1f}×  實體={conf['body_ratio']*100:.0f}%")
+        logger.info("│  帶寬=%.2f%% 壓縮%d根  量比=%.1f×  實體=%.0f%%",
+                    conv["bandwidth"], conv["compression_bars"], vol, conf["body_ratio"] * 100)
     elif strategy == "EMA_PULLBACK":
-        print(f"  │  回測EMA30後反彈確認  量比={vol:.1f}×  實體={conf['body_ratio']*100:.0f}%")
+        logger.info("│  回測EMA30後反彈確認  量比=%.1f×  實體=%.0f%%", vol, conf["body_ratio"] * 100)
     elif strategy == "STRUCTURE_BREAKOUT":
-        print(f"  │  結構突破回測確認  量比={vol:.1f}×  實體={conf['body_ratio']*100:.0f}%")
-    print(f"  └{'─'*60}")
+        logger.info("│  結構突破回測確認  量比=%.1f×  實體=%.0f%%", vol, conf["body_ratio"] * 100)
+    logger.info("└%s", "─" * 60)
 
 
 # ── 核心掃描函式 ──────────────────────────────────────────────
 
 def run_scan() -> None:
     now_tw = datetime.now(TW_TZ).strftime("%Y/%m/%d %H:%M TWN")
-    print(f"\n[掃描開始] {now_tw}")
+    logger.info("掃描開始  %s", now_tw)
 
     symbols = get_contracts()
     if not symbols:
-        print("[錯誤] 無法取得合約清單，本次掃描跳過")
+        logger.error("無法取得合約清單，本次掃描跳過")
         return
 
-    print(f"[資訊] 共取得 {len(symbols)} 個交易對")
+    logger.info("共取得 %d 個交易對", len(symbols))
 
     # Regime Filter：BTC 4H EMA15 vs EMA60
     btc_regime_bull = True
@@ -293,7 +300,8 @@ def run_scan() -> None:
             if _e15 is not None and _e60 is not None:
                 btc_regime_bull = _e15 > _e60
     regime_str = "多頭" if btc_regime_bull else "空頭（山寨多單封鎖）"
-    print(f"[Regime] BTC 4H EMA15 {'>' if btc_regime_bull else '<'} EMA60 → {regime_str}")
+    logger.info("Regime  BTC 4H EMA15 %s EMA60 → %s",
+                ">" if btc_regime_bull else "<", regime_str)
 
     state  = prune_state(load_state())
     trader = PaperTrader.load()
@@ -321,20 +329,20 @@ def run_scan() -> None:
             continue
 
         if is_duplicate(state, symbol):
-            print(f"  [跳過重複] {symbol}  score={score}")
+            logger.debug("跳過重複  %s  score=%s", symbol, score)
             continue
 
         strat = result.get("strategy", "EMA_CONVERGENCE")
-        print(f"  [訊號] {symbol}  {result['direction']}  [{strat}]  score={score}")
+        logger.info("訊號  %s  %s  [%s]  score=%s", symbol, result["direction"], strat, score)
         if len(trader.positions) >= trader.max_positions:
-            print(f"  [跳過] 已達持倉上限 {trader.max_positions}，{symbol} 排隊等待")
+            logger.warning("已達持倉上限 %d，%s 排隊等待", trader.max_positions, symbol)
 
         qualified.append((result, score))
         mark_alerted(state, symbol)
         log_signal(result, score)
 
         if i % 20 == 0:
-            print(f"  ... 已掃描 {i}/{total}")
+            logger.debug("已掃描 %d/%d", i, total)
 
     save_state(state)
 
@@ -348,12 +356,13 @@ def run_scan() -> None:
     exit_events = trader.update_positions(latest_bar_4h)
     log_closed_trades(exit_events)
     for ev in exit_events:
-        print(f"  [紙倉出場] {ev['symbol']:20s}  {ev['reason']}  PnL: ${ev['pnl']:>+.2f}")
+        logger.info("紙倉出場  %-20s  %s  PnL: $%+.2f",
+                    ev["symbol"], ev["reason"], ev["pnl"])
 
     qualified.sort(key=lambda x: x[1], reverse=True)
     for result, score in qualified:
         if trader.open_position(result, score):
-            _print_open_detail(result, score)
+            _log_open_detail(result, score)
 
     trader.save()
     export_trades_csv(trader)
@@ -361,9 +370,9 @@ def run_scan() -> None:
     trader.print_report()
 
     if qualified:
-        print(f"[完成] {len(qualified)} 個達標訊號")
+        logger.info("掃描完成  %d 個達標訊號", len(qualified))
     else:
-        print(f"[完成] 無達標訊號（收斂中：{converging}）")
+        logger.info("掃描完成  無達標訊號（收斂中：%d）", converging)
 
 
 # ── 排程主迴圈 ────────────────────────────────────────────────
@@ -372,12 +381,14 @@ def main() -> None:
     global BOT_START_TIME
     BOT_START_TIME = time.time()
 
-    print("=" * 55)
-    print("  Crypto Quant Signal Platform — Scheduler 啟動")
-    print("  交易所：Binance Futures")
-    print("  掃描間隔：60 分鐘")
-    print("  額外觸發：4H K 線收盤時")
-    print("=" * 55)
+    setup_logging(log_file=DATA_DIR / "bot.log")
+
+    logger.info("=" * 55)
+    logger.info("  Crypto Quant Signal Platform — Scheduler 啟動")
+    logger.info("  交易所：Binance Futures")
+    logger.info("  掃描間隔：60 分鐘")
+    logger.info("  額外觸發：4H K 線收盤時")
+    logger.info("=" * 55)
 
     try:
         run_scan()
@@ -395,20 +406,20 @@ def main() -> None:
 
             if triggered_by_interval or triggered_by_4h_close:
                 if triggered_by_4h_close:
-                    print(f"[觸發] 新 4H K 線收盤（UTC 窗口 {current_4h_w * 4:02d}:00）")
+                    logger.info("新 4H K 線收盤（UTC 窗口 %02d:00）", current_4h_w * 4)
                 last_4h_window = current_4h_w
                 last_scan_ts   = time.time()
                 run_scan()
 
     except KeyboardInterrupt:
-        print("\nStopped by user.")
+        logger.info("Stopped by user.")
     finally:
         stop_ts = time.time()
         try:
             trader = PaperTrader.load()
             archive_session(BOT_START_TIME, stop_ts, trader)
         except Exception as e:
-            print(f"[ARCHIVE] 匯出失敗：{e}")
+            logger.error("匯出失敗：%s", e)
 
 
 if __name__ == "__main__":
