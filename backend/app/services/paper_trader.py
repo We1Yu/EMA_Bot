@@ -16,6 +16,8 @@ RISK_PCT      = 0.02
 MAX_POSITIONS = 4
 MAX_SAME_DIR  = 2
 TP1_FRACTION  = 0.25   # TP1 時平倉比例（取 25%，留 75% 衝 TP2）
+FEE_RATE      = 0.0005  # 0.05% taker fee（Binance 合約吃單）
+SLIPPAGE_RATE = 0.0003  # 0.03% 滑點
 
 
 @dataclass
@@ -42,14 +44,19 @@ class PaperTrader:
         risk_pct:        float = RISK_PCT,
         max_positions:   int   = MAX_POSITIONS,
         max_same_dir:    int   = MAX_SAME_DIR,
+        fee_rate:        float = FEE_RATE,
+        slippage_rate:   float = SLIPPAGE_RATE,
     ):
         self.initial_balance = initial_balance
         self.balance         = initial_balance
         self.risk_pct        = risk_pct
         self.max_positions   = max_positions
         self.max_same_dir    = max_same_dir
+        self.fee_rate        = fee_rate
+        self.slippage_rate   = slippage_rate
         self.positions:     dict[str, Position] = {}
         self.trade_history: list[dict]          = []
+        self.total_fees:    float               = 0.0
 
     # ── 開倉 ──────────────────────────────────────────────────
     def open_position(self, result: dict, score: float) -> bool:
@@ -64,13 +71,25 @@ class PaperTrader:
             return False
 
         lvl       = result["levels"]
-        entry     = lvl["entry"]
+        entry_raw = lvl["entry"]
         sl        = lvl["stop_loss"]
+
+        # 滑點：開倉時實際成交價比報價差一點
+        slip = entry_raw * self.slippage_rate
+        entry = entry_raw + slip if direction == "LONG" else entry_raw - slip
+
         risk_dist = abs(entry - sl)
         if risk_dist == 0:
             return False
 
         contracts = (self.balance * self.risk_pct) / risk_dist
+        notional  = contracts * entry
+
+        # 開倉手續費
+        open_fee = notional * self.fee_rate
+        self.balance    -= open_fee
+        self.total_fees += open_fee
+
         pos = Position(
             symbol       = symbol,
             direction    = result["direction"],
@@ -79,7 +98,7 @@ class PaperTrader:
             target1      = lvl["target1"],
             target2      = lvl["target2"],
             contracts    = contracts,
-            notional     = contracts * entry,
+            notional     = notional,
             open_time_ms = result.get("candle_time_ms", int(time.time() * 1000)),
             score        = score,
             strategy     = result.get("strategy", ""),
@@ -134,12 +153,24 @@ class PaperTrader:
         if reason == "SL" and pos.tp1_hit:
             reason = "套保"
         remaining = (1.0 - TP1_FRACTION) if pos.tp1_hit else 1.0
+        contracts_closed = pos.contracts * remaining
+
+        # 滑點：平倉時實際成交價比報價差一點
+        slip = exit_price * self.slippage_rate
+        actual_exit = exit_price - slip if pos.direction == "LONG" else exit_price + slip
+
         if pos.direction == "LONG":
-            pnl = (exit_price - pos.entry_price) * pos.contracts * remaining
+            pnl = (actual_exit - pos.entry_price) * contracts_closed
         else:
-            pnl = (pos.entry_price - exit_price) * pos.contracts * remaining
+            pnl = (pos.entry_price - actual_exit) * contracts_closed
+
+        # 平倉手續費
+        close_fee = contracts_closed * actual_exit * self.fee_rate
+        pnl -= close_fee
+        self.total_fees += close_fee
+
         self.balance += pnl
-        record = self._record(pos, exit_price, reason, pnl, time_ms, remaining, full_close=True)
+        record = self._record(pos, actual_exit, reason, pnl, time_ms, remaining, full_close=True)
         self.trade_history.append(record)
         return record
 
@@ -147,12 +178,24 @@ class PaperTrader:
         pos         = self.positions[symbol]
         pos.tp1_hit = True
         fraction    = TP1_FRACTION
+        contracts_closed = pos.contracts * fraction
+
+        # 滑點
+        slip = exit_price * self.slippage_rate
+        actual_exit = exit_price - slip if pos.direction == "LONG" else exit_price + slip
+
         if pos.direction == "LONG":
-            pnl = (exit_price - pos.entry_price) * pos.contracts * fraction
+            pnl = (actual_exit - pos.entry_price) * contracts_closed
         else:
-            pnl = (pos.entry_price - exit_price) * pos.contracts * fraction
+            pnl = (pos.entry_price - actual_exit) * contracts_closed
+
+        # 平倉手續費
+        close_fee = contracts_closed * actual_exit * self.fee_rate
+        pnl -= close_fee
+        self.total_fees += close_fee
+
         self.balance += pnl
-        record = self._record(pos, exit_price, reason, pnl, time_ms, fraction, full_close=False)
+        record = self._record(pos, actual_exit, reason, pnl, time_ms, fraction, full_close=False)
         self.trade_history.append(record)
         return record
 
@@ -178,6 +221,8 @@ class PaperTrader:
 
     # ── 統計 ─────────────────────────────────────────────────
     def get_stats(self) -> dict:
+        import math
+
         h = self.trade_history
         if not h:
             return {
@@ -191,11 +236,14 @@ class PaperTrader:
         losses = [t for t in full if t["pnl"] <= 0]
         total_pnl = sum(t["pnl"] for t in h)
 
+        # 權益曲線 + 最大回撤
         bal = self.initial_balance
         peak = bal
         max_dd = 0.0
-        for t in h:
+        equity_curve: list[float] = [bal]
+        for t in sorted(h, key=lambda x: x["close_ms"]):
             bal += t["pnl"]
+            equity_curve.append(bal)
             if bal > peak:
                 peak = bal
             dd = (peak - bal) / peak * 100
@@ -205,21 +253,62 @@ class PaperTrader:
         win_sum  = sum(t["pnl"] for t in wins)
         loss_sum = sum(t["pnl"] for t in losses)
 
+        # R 倍數：pnl / 初始風險金額（= initial_balance × risk_pct）
+        # 不用 stop_loss 距離，因 TP1 後 SL 移到成本，TP2/套保單的風險距離 = 0
+        unit_risk = self.initial_balance * self.risk_pct
+        r_multiples = [round(t["pnl"] / unit_risk, 3) for t in full] if unit_risk > 0 else []
+        r_mean  = sum(r_multiples) / len(r_multiples) if r_multiples else 0.0
+
+        # 最大連敗
+        max_consec_loss = cur_consec = 0
+        for t in sorted(full, key=lambda x: x["close_ms"]):
+            if t["pnl"] <= 0:
+                cur_consec += 1
+                max_consec_loss = max(max_consec_loss, cur_consec)
+            else:
+                cur_consec = 0
+
+        # Sharpe / Sortino（以每筆完整平倉 PnL 佔初始資金的百分比為回報序列）
+        ib = self.initial_balance
+        trade_returns = [t["pnl"] / ib for t in sorted(full, key=lambda x: x["close_ms"])]
+        sharpe = sortino = None
+        if len(trade_returns) >= 2:
+            n     = len(trade_returns)
+            mean  = sum(trade_returns) / n
+            var   = sum((r - mean) ** 2 for r in trade_returns) / (n - 1)
+            std   = math.sqrt(var)
+            # 年化：每筆交易假設平均持倉 ~2 天（4H bar 系統），一年約 365/2 筆
+            ann   = math.sqrt(365 / 2)
+            sharpe = round(mean / std * ann, 3) if std > 0 else None
+
+            downside_var = sum(min(r, 0) ** 2 for r in trade_returns) / (n - 1)
+            downside_std = math.sqrt(downside_var)
+            sortino = round(mean / downside_std * ann, 3) if downside_std > 0 else None
+
         return {
-            "initial_balance":   self.initial_balance,
-            "current_balance":   round(self.balance, 2),
-            "total_pnl":         round(total_pnl, 2),
-            "total_return_pct":  round((self.balance - self.initial_balance) / self.initial_balance * 100, 2),
-            "total_events":      len(h),
-            "full_closes":       len(full),
-            "wins":              len(wins),
-            "losses":            len(losses),
-            "win_rate_pct":      round(len(wins) / len(full) * 100, 1) if full else 0,
-            "avg_win":           round(win_sum  / len(wins),   2) if wins   else 0,
-            "avg_loss":          round(loss_sum / len(losses), 2) if losses else 0,
-            "profit_factor":     round(abs(win_sum / loss_sum), 2) if loss_sum != 0 else None,
-            "max_drawdown_pct":  round(max_dd, 2),
-            "open_positions":    len(self.positions),
+            "initial_balance":    self.initial_balance,
+            "current_balance":    round(self.balance, 2),
+            "total_pnl":          round(total_pnl, 2),
+            "total_return_pct":   round((self.balance - self.initial_balance) / self.initial_balance * 100, 2),
+            "total_events":       len(h),
+            "full_closes":        len(full),
+            "wins":               len(wins),
+            "losses":             len(losses),
+            "win_rate_pct":       round(len(wins) / len(full) * 100, 1) if full else 0,
+            "avg_win":            round(win_sum  / len(wins),   2) if wins   else 0,
+            "avg_loss":           round(loss_sum / len(losses), 2) if losses else 0,
+            "profit_factor":      round(abs(win_sum / loss_sum), 2) if loss_sum != 0 else None,
+            "max_drawdown_pct":   round(max_dd, 2),
+            "sharpe":             sharpe,
+            "sortino":            sortino,
+            "r_mean":             round(r_mean, 3),
+            "r_multiples":        r_multiples,
+            "max_consec_losses":  max_consec_loss,
+            "equity_curve":       [round(v, 2) for v in equity_curve],
+            "open_positions":     len(self.positions),
+            "total_fees":         round(self.total_fees, 2),
+            "fee_rate":           self.fee_rate,
+            "slippage_rate":      self.slippage_rate,
         }
 
     def print_report(self) -> None:
@@ -238,6 +327,7 @@ class PaperTrader:
         print(f"  平均虧損：  ${s.get('avg_loss', 0):>+12,.2f}")
         pf = s.get("profit_factor")
         print(f"  獲利因子：  {f'{pf:.2f}' if pf is not None else 'N/A'}")
+        print(f"  手續費總計：${s.get('total_fees', 0.0):>12,.2f}  (費率 {self.fee_rate*100:.3f}%  滑點 {self.slippage_rate*100:.3f}%)")
         print(f"  持倉中：    {s.get('open_positions', len(self.positions))} 筆")
         if self.positions:
             for sym, pos in self.positions.items():
@@ -255,6 +345,9 @@ class PaperTrader:
             "balance":         self.balance,
             "risk_pct":        self.risk_pct,
             "max_positions":   self.max_positions,
+            "fee_rate":        self.fee_rate,
+            "slippage_rate":   self.slippage_rate,
+            "total_fees":      self.total_fees,
             "positions":       {k: asdict(v) for k, v in self.positions.items()},
             "trade_history":   self.trade_history,
         }
@@ -268,9 +361,15 @@ class PaperTrader:
             return cls()
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        trader = cls(data["initial_balance"], data.get("risk_pct", RISK_PCT),
-                     data.get("max_positions", MAX_POSITIONS))
+        trader = cls(
+            data["initial_balance"],
+            data.get("risk_pct",      RISK_PCT),
+            data.get("max_positions", MAX_POSITIONS),
+            fee_rate      = data.get("fee_rate",      FEE_RATE),
+            slippage_rate = data.get("slippage_rate", SLIPPAGE_RATE),
+        )
         trader.balance       = data["balance"]
+        trader.total_fees    = data.get("total_fees", 0.0)
         trader.positions     = {
             k: Position(**{**{"tp1_hit": False, "last_bar_ms": 0, "strategy": ""}, **v})
             for k, v in data.get("positions", {}).items()
