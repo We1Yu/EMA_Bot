@@ -7,6 +7,7 @@ from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter
 
+from app.schemas.account import AccountResponse, ResetResponse, EquityRecord
 from app.services.paper_trader import PaperTrader
 from app.services.data_ingestion.binance import get_ticker_price
 from app.core.config import CLOSED_TRADES_JSONL, EQUITY_JSONL, PAPER_FILE
@@ -41,7 +42,7 @@ def _fetch_prices(symbols: list[str]) -> dict[str, float]:
     return result
 
 
-@router.get("/")
+@router.get("/", response_model=AccountResponse)
 async def get_account():
     """帳戶統計 + 持倉 + 最近 100 筆交易 + 資金曲線"""
     trader = PaperTrader.load()
@@ -126,7 +127,7 @@ async def get_account():
     }
 
 
-@router.get("/equity")
+@router.get("/equity", response_model=list[EquityRecord])
 async def get_equity():
     """從 EQUITY_JSONL 讀取完整資產曲線快照（排程每次掃描後寫入）"""
     records: list[dict] = []
@@ -158,7 +159,7 @@ async def get_records():
     return list(reversed(records))
 
 
-@router.post("/reset")
+@router.post("/reset", response_model=ResetResponse)
 async def reset_account():
     """重置紙上帳戶（清除所有持倉與交易紀錄，保留初始資金設定）"""
     trader = PaperTrader.load()

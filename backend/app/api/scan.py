@@ -7,6 +7,11 @@ from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter
 
+from app.schemas.scan import (
+    BtcRegimeResponse,
+    ScanStatusResponse,
+    ScanTriggerResponse,
+)
 from app.services.data_ingestion.binance import get_contracts, get_klines
 from app.services.strategies.scanner import scan_symbol
 from app.services.strategies.indicators import ema_snapshot
@@ -49,7 +54,7 @@ def _get_btc_regime() -> tuple[bool, float | None, float | None]:
     return e15 > e60, round(e15, 4), round(e60, 4)
 
 
-@router.get("/btc-regime")
+@router.get("/btc-regime", response_model=BtcRegimeResponse)
 async def btc_regime():
     """查詢目前 BTC 4H Regime Filter 狀態"""
     is_bull, ema15, ema60 = _get_btc_regime()
@@ -62,7 +67,7 @@ async def btc_regime():
     }
 
 
-@router.get("/status")
+@router.get("/status", response_model=ScanStatusResponse)
 async def scan_status():
     """查詢掃描任務狀態"""
     with _lock:
@@ -73,7 +78,7 @@ async def scan_status():
         }
 
 
-@router.post("/")
+@router.post("/", response_model=ScanTriggerResponse)
 async def trigger_scan():
     """觸發全市場掃描（非同步背景執行）"""
     with _lock:

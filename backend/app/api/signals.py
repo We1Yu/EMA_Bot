@@ -6,6 +6,7 @@ from typing import Literal
 from fastapi import APIRouter, Query
 
 from app.core.config import SIGNALS_LOG, SIGNALS_JSONL
+from app.schemas.signals import SignalItem, SignalsStatsResponse, StrategyLiteral, DirectionLiteral
 
 router = APIRouter()
 
@@ -45,11 +46,11 @@ def _apply_filters(
     return signals
 
 
-@router.get("/")
+@router.get("/", response_model=list[SignalItem])
 async def get_signals(
-    limit:     int                                               = Query(50, ge=1, le=300),
-    strategy:  Literal["EMA_CONVERGENCE", "EMA_PULLBACK", "STRUCTURE_BREAKOUT"] | None = None,
-    direction: Literal["LONG", "SHORT"] | None                  = None,
+    limit:     int                  = Query(50, ge=1, le=300),
+    strategy:  StrategyLiteral | None = None,
+    direction: DirectionLiteral | None = None,
 ):
     """最近 N 筆達標訊號（最新優先），可依策略與方向篩選"""
     signals = _load_signals_log()
@@ -57,11 +58,11 @@ async def get_signals(
     return list(reversed(signals[-limit:]))
 
 
-@router.get("/history")
+@router.get("/history", response_model=list[SignalItem])
 async def get_signals_history(
-    limit:     int                                               = Query(200, ge=1, le=2000),
-    strategy:  Literal["EMA_CONVERGENCE", "EMA_PULLBACK", "STRUCTURE_BREAKOUT"] | None = None,
-    direction: Literal["LONG", "SHORT"] | None                  = None,
+    limit:     int                  = Query(200, ge=1, le=2000),
+    strategy:  StrategyLiteral | None = None,
+    direction: DirectionLiteral | None = None,
 ):
     """全部歷史訊號（從 JSONL，最新優先），可依策略與方向篩選"""
     signals = _load_signals_history()
@@ -69,7 +70,7 @@ async def get_signals_history(
     return list(reversed(signals[-limit:]))
 
 
-@router.get("/stats")
+@router.get("/stats", response_model=SignalsStatsResponse)
 async def get_signals_stats():
     """訊號統計：各策略 / 方向的觸發次數"""
     signals = _load_signals_history()
