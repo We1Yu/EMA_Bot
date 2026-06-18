@@ -228,3 +228,19 @@ def body_ratio(candle: dict) -> float:
     if total_range == 0:
         return 0.0
     return abs(candle["close"] - candle["open"]) / total_range
+
+
+def is_btc_black_swan(
+    candles_4h: list[dict],
+    lookback:   int   = 3,
+    threshold:  float = 0.05,
+) -> bool:
+    """
+    偵測極端波動事件：最近 lookback 根 4H K 棒內，
+    任一根 BTC 的熊市實體跌幅 > threshold（預設 5%）則回傳 True。
+    觸發時封鎖所有新倉，避免在急跌/急彈中被砍。
+    """
+    for c in candles_4h[-lookback:]:
+        if c["open"] > 0 and (c["open"] - c["close"]) / c["open"] > threshold:
+            return True
+    return False

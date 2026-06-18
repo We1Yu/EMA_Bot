@@ -15,7 +15,7 @@ from pathlib import Path
 from app.core.logging_config import setup_logging
 from app.services.data_ingestion.binance import get_contracts, get_klines
 from app.services.strategies.scanner     import scan_symbol
-from app.services.strategies.indicators  import ema_snapshot
+from app.services.strategies.indicators  import ema_snapshot, is_btc_black_swan
 from app.services.scoring.scorer         import score_setup, passes_threshold
 from app.services.paper_trader           import PaperTrader
 from app.core.config import (
@@ -303,6 +303,12 @@ def run_scan() -> None:
     logger.info("Regime  BTC 4H EMA15 %s EMA60 → %s",
                 ">" if btc_regime_bull else "<", regime_str)
 
+    black_swan = False
+    if btc_candles_4h and len(btc_candles_4h) >= 3:
+        black_swan = is_btc_black_swan(btc_candles_4h)
+    if black_swan:
+        logger.warning("Black Swan 偵測：BTC 近期 4H 單根跌幅 > 5%%，本次掃描封鎖所有新倉")
+
     state  = prune_state(load_state())
     trader = PaperTrader.load()
 
@@ -319,7 +325,7 @@ def run_scan() -> None:
 
         latest_bar_4h[symbol] = candles_4h[-1]
 
-        result = scan_symbol(symbol, candles_4h, candles_1h, btc_regime_bull)
+        result = scan_symbol(symbol, candles_4h, candles_1h, btc_regime_bull, black_swan)
         if result is None:
             continue
 

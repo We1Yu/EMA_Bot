@@ -17,7 +17,7 @@ from pathlib import Path
 
 from app.services.data_ingestion.binance import get_contracts, get_klines
 from app.services.data_ingestion.fetch_data import load as load_cached, KLINES_CACHE_DIR
-from app.services.strategies.indicators import ema_snapshot
+from app.services.strategies.indicators import ema_snapshot, is_btc_black_swan
 from app.services.strategies.scanner import scan_symbol
 from app.services.scoring.scorer import score_setup, passes_threshold
 from app.services.paper_trader import PaperTrader
@@ -78,7 +78,8 @@ def _simulate(
 
         e15 = btc_emas["ema15"][bar_idx]
         e60 = btc_emas["ema60"][bar_idx]
-        regime = (e15 > e60) if (e15 is not None and e60 is not None) else True
+        regime     = (e15 > e60) if (e15 is not None and e60 is not None) else True
+        black_swan = is_btc_black_swan(btc_4h[max(0, bar_idx - 2): bar_idx + 1])
 
         signals:     list[tuple] = []
         latest_bars: dict[str, dict] = {}
@@ -97,7 +98,7 @@ def _simulate(
             if len(c1h_use) < 60:
                 continue
 
-            res = scan_symbol(sym, c4h_use, c1h_use, regime)
+            res = scan_symbol(sym, c4h_use, c1h_use, regime, black_swan)
             if res:
                 sc = score_setup(res, bar_open_ms)
                 if passes_threshold(sc):

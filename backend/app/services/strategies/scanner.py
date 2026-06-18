@@ -9,7 +9,7 @@
 from app.services.strategies.indicators import (
     calc_bandwidth, calc_atr, calc_adx,
     calc_rsi, calc_macd, calc_bollinger,
-    ema_snapshot, body_ratio,
+    ema_snapshot, body_ratio, is_btc_black_swan,
 )
 
 # Binance 格式（無連字號）
@@ -53,6 +53,10 @@ STRUCTURE_RETEST_PCT      = 0.008
 STRUCTURE_VOL_RATIO       = 1.5
 STRUCTURE_BODY            = 0.50
 STRUCTURE_MIN_BREAK_BARS  = 2
+
+# ── Black Swan 濾網 ──────────────────────────────────────────
+BLACK_SWAN_CANDLE_DROP = 0.05   # BTC 單根 4H 實體跌幅門檻（5%）
+BLACK_SWAN_LOOKBACK    = 3      # 往回看的根數
 
 # ── RR 比（出場結構）────────────────────────────────────────
 TP1_MULT = 1.5   # 第一目標倍數
@@ -656,11 +660,16 @@ def scan_symbol(
     candles_4h:      list[dict],
     candles_1h:      list[dict],
     btc_regime_bull: bool = True,
+    black_swan:      bool = False,
 ) -> dict | None:
     """
     依序嘗試三種策略，任一通過即回傳結果 dict，全部失敗則回傳 None。
     btc_regime_bull=False 時（BTC 4H EMA15 < EMA60），山寨多單全部封鎖。
+    black_swan=True 時（BTC 近期 4H 單根跌幅 > 5%），全部新倉封鎖。
     """
+    if black_swan:
+        return None
+
     is_main      = symbol in MAIN_COINS
     regime_ok    = btc_regime_bull or is_main
     regime_label = "通過" if regime_ok else "暫停（BTC 空頭環境）"
