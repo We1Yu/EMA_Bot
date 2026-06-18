@@ -1,5 +1,7 @@
 # Trade Bot
 
+[![CI](https://github.com/We1Yu/EMA_Bot/actions/workflows/ci.yml/badge.svg)](https://github.com/We1Yu/EMA_Bot/actions/workflows/ci.yml)
+
 加密貨幣量化交易平台，含虛擬交易機器人與全端 FastAPI 後端。
 
 | 系統 | 交易所 | 週期 | 策略 | 掃描頻率 |
@@ -21,14 +23,23 @@ Trade_Bot/
 │   │   │   ├── signals.py           # 訊號歷史 / 統計 / 篩選
 │   │   │   ├── scan.py              # 即時掃描觸發 / BTC Regime 狀態
 │   │   │   └── backtest.py          # 回測觸發 / 結果查詢
-│   │   ├── core/config.py           # 路徑常數統一管理
+│   │   ├── core/
+│   │   │   ├── config.py            # 路徑常數統一管理
+│   │   │   └── logging_config.py    # 結構化日誌設定
+│   │   ├── schemas/                 # Pydantic 輸入驗證 / 回應 Schema
+│   │   │   ├── account.py
+│   │   │   ├── backtest.py
+│   │   │   ├── scan.py
+│   │   │   └── signals.py
 │   │   └── services/
 │   │       ├── strategies/          # scanner.py + indicators.py
 │   │       ├── scoring/             # scorer.py（門檻 7.5）
-│   │       ├── backtest/            # engine.py（Regime Filter 對照）
+│   │       ├── backtest/            # engine.py + walk_forward.py
 │   │       ├── data_ingestion/      # Binance Futures K 線下載
 │   │       └── paper_trader.py
+│   ├── tests/                       # pytest 單元測試
 │   ├── scheduler.py                 # 主排程迴圈
+│   ├── pyproject.toml               # 專案設定（ruff / pytest）
 │   ├── Dockerfile
 │   ├── static/index.html            # 網頁儀表板（Chart.js，由 FastAPI 提供服務）
 │   └── data/                        # 執行期資料（gitignore）
@@ -103,7 +114,7 @@ API 文件：`http://localhost:8000/docs`
 
 | 方法 | 路徑 | 說明 |
 |------|------|------|
-| POST | `/api/backtest/` | 觸發回測（`use_all`、`max_symbols` 參數） |
+| POST | `/api/backtest/` | 觸發回測（JSON body：`use_all: bool`、`max_symbols: int 1–500`） |
 | GET | `/api/backtest/` | 取得上次回測結果 |
 | GET | `/api/backtest/status` | 查詢回測任務狀態 |
 
@@ -142,6 +153,7 @@ python scheduler.py
 - [x] 容器化部署（Docker + docker-compose）
 - [x] 出場結構優化（TP1 25% / TP2 75%，PF 突破 1.0）
 - [x] 前端儀表板（`backend/static/index.html`，Chart.js 暗色主題）
+- [x] API 輸入驗證（Pydantic Schema 層，`backend/app/schemas/`，含 response_model）
 - [ ] 即時 WebSocket 模組（Phase 4）
 - [ ] 生產環境部署（Phase 5）
 

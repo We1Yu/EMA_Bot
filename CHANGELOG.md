@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.8.0] - 2026-06-18
+
+### 新增
+- **Pydantic Schema 層（`backend/app/schemas/`）**：為全部 4 個路由建立型別化的請求 / 回應 Schema
+  - `backtest.py`：`BacktestRequest`（`max_symbols` 驗證 ge=1, le=500）、`BacktestTriggerResponse`、`BacktestStatusResponse`、`BacktestResultResponse`
+  - `scan.py`：`BtcRegimeResponse`、`ScanSignalItem`、`ScanResult`、`ScanStatusResponse`、`ScanTriggerResponse`
+  - `signals.py`：`SignalItem`、`SignalsStatsResponse`、共用型別別名 `StrategyLiteral` / `DirectionLiteral`
+  - `account.py`：`PositionItem`、`TradeItem`、`AccountResponse`、`EquityRecord`（`extra="allow"`）、`ResetResponse`
+
+### 調整
+- **`POST /api/backtest/`** 改為接受 JSON request body（`BacktestRequest`），取代原本的 query params；`max_symbols` 新增上限驗證
+- 所有端點加上 `response_model`，FastAPI `/docs` 頁現可顯示完整輸入 / 輸出 Schema
+- `signals.py` 的 `strategy` / `direction` query params 改為引用 `StrategyLiteral` / `DirectionLiteral`，集中定義
+
+### 提交紀錄
+- `6920280` feat: add Pydantic input validation schemas for all API endpoints
+
+---
+
 ## [1.7.1] - 2026-06-17
 
 ### 調整
