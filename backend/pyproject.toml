@@ -1,0 +1,21 @@
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths  = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length    = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = [
+    "E501",  # line-length – scanner.py 含長 f-string，放寬由 per-file-ignores 控制
+]
+
+[tool.ruff.lint.per-file-ignores]
+# scorer.py：緊湊 if/elif 查表風格（E701），可讀性高，刻意保留
+"app/services/scoring/scorer.py"       = ["E701"]
+# scanner.py：同行分號（E702）與長 f-string debug 字串（E501）
+"app/services/strategies/scanner.py"   = ["E702", "E501"]
+# paper_trader.py：print_report 長格式字串
+"app/services/paper_trader.py"         = ["E501"]
