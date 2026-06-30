@@ -3,7 +3,6 @@
 支援策略：
   EMA_CONVERGENCE      – EMA 群收斂後突破（4H + 1H 確認）
   EMA_SQUEEZE_BREAKOUT – EMA 群收斂後 4H 出量突破（純 4H，無 1H 確認）
-  EMA_PULLBACK         – EMA30 回測後反彈（1H 主圖）
   STRUCTURE_BREAKOUT   – 結構突破後回測（1H 主圖）
 """
 
@@ -31,14 +30,6 @@ CROSS_LOOKBACK                 = 3
 # ── EMA_SQUEEZE_BREAKOUT 參數（純 4H 出量突破，無 1H 確認）──
 SQUEEZE_BODY_MIN = 0.50   # 4H 突破當根實體比下限（無 1H 確認，故以此把關）
 
-# ── EMA_PULLBACK 參數 ────────────────────────────────────────
-EMA_PULLBACK_TOUCH_PCT_ALT  = 0.008
-EMA_PULLBACK_TOUCH_PCT_MAIN = 0.005
-EMA_PULLBACK_VOL_RATIO      = 1.8
-EMA_PULLBACK_VOL_LOOKBACK   = 20
-EMA_PULLBACK_BODY           = 0.60
-EMA_PULLBACK_RSI_MIN        = 48
-
 RSI_PERIOD = 14
 
 # ── ADX 趨勢強度過濾 ─────────────────────────────────────────
@@ -61,12 +52,6 @@ STRUCTURE_MIN_BREAK_BARS  = 2
 # ── RR 比（出場結構）────────────────────────────────────────
 TP1_MULT = 1.5   # 第一目標倍數
 TP2_MULT = 2.5   # 第二目標倍數
-
-# ── EMA60_BOUNCE 參數（停用中） ──────────────────────────────
-PINBAR_EMA30_TOUCH_PCT = 0.015
-EMA60_TOUCH_PCT        = 0.015
-EMA60_VOL_RATIO        = 1.5
-EMA60_BODY             = 0.50
 
 
 # ─────────────────────────────────────────────────────────────
@@ -431,162 +416,7 @@ def _scan_squeeze_breakout(
 
 
 # ─────────────────────────────────────────────────────────────
-# 策略二：EMA30 回測反彈
-# ─────────────────────────────────────────────────────────────
-
-def _scan_ema_pullback(
-    symbol: str,
-    candles_4h: list[dict], candles_1h: list[dict],
-    emas_4h: dict,          emas_1h: dict,
-) -> dict | None:
-    is_main   = symbol in MAIN_COINS
-    touch_pct = EMA_PULLBACK_TOUCH_PCT_MAIN if is_main else EMA_PULLBACK_TOUCH_PCT_ALT
-
-    direction = _trend_direction_4h(candles_4h, emas_4h)
-    if direction is None:
-        return None
-
-    adx_vals = calc_adx(candles_4h, 14)
-    idx_4h   = len(candles_4h) - 1
-    adx_now  = adx_vals[idx_4h]
-    if adx_now is None or adx_now < ADX_4H_MIN:
-        return None
-
-    closes_4h   = [c["close"] for c in candles_4h]
-    rsi_4h_vals = calc_rsi(closes_4h, RSI_PERIOD)
-    rsi_4h      = rsi_4h_vals[idx_4h]
-    if direction == "LONG":
-        if rsi_4h is None or not (RSI_4H_LONG_MIN <= rsi_4h <= RSI_4H_LONG_MAX):
-            return None
-    else:
-        if rsi_4h is None or not (RSI_4H_SHORT_MIN <= rsi_4h <= RSI_4H_SHORT_MAX):
-            return None
-
-    e15_4h      = emas_4h["ema15"][idx_4h]
-    e30_4h      = emas_4h["ema30"][idx_4h]
-    e60_4h_curr = emas_4h["ema60"][idx_4h]
-    e60_4h_prev = emas_4h["ema60"][idx_4h - 1] if idx_4h >= 1 else None
-    if any(v is None for v in [e15_4h, e30_4h, e60_4h_curr, e60_4h_prev]):
-        return None
-
-    if direction == "LONG"  and e15_4h <= e30_4h:
-        return None
-    if direction == "SHORT" and e15_4h >= e30_4h:
-        return None
-
-    ema60_4h_rising = e60_4h_curr > e60_4h_prev
-    if direction == "LONG"  and not ema60_4h_rising:
-        return None
-    if direction == "SHORT" and ema60_4h_rising:
-        return None
-
-    idx = len(candles_1h) - 1
-    if idx < max(CROSS_LOOKBACK, EMA_PULLBACK_VOL_LOOKBACK) + 1:
-        return None
-
-    ema15   = emas_1h["ema15"][idx]
-    ema30   = emas_1h["ema30"][idx]
-    ema30_p = emas_1h["ema30"][idx - 1]
-    ema60   = emas_1h["ema60"][idx]
-    if any(v is None for v in [ema15, ema30, ema30_p, ema60]):
-        return None
-
-    if direction == "LONG"  and ema15 <= ema30:
-        return None
-    if direction == "SHORT" and ema15 >= ema30:
-        return None
-
-    close = candles_1h[idx]["close"]
-    if direction == "LONG"  and close < ema60:
-        return None
-    if direction == "SHORT" and close > ema60:
-        return None
-
-    prev = candles_1h[idx - 1]
-    if direction == "LONG":
-        if prev["low"] > ema30_p * (1 + touch_pct):
-            return None
-        if close <= ema30:
-            return None
-        if close <= candles_1h[idx]["open"]:
-            return None
-    else:
-        if prev["high"] < ema30_p * (1 - touch_pct):
-            return None
-        if close >= ema30:
-            return None
-        if close >= candles_1h[idx]["open"]:
-            return None
-
-    ratio = body_ratio(candles_1h[idx])
-    if ratio < EMA_PULLBACK_BODY:
-        return None
-
-    avg_vol = sum(c["volume"] for c in candles_1h[idx - EMA_PULLBACK_VOL_LOOKBACK:idx]) / EMA_PULLBACK_VOL_LOOKBACK
-    if avg_vol == 0:
-        return None
-    vol_ratio = candles_1h[idx]["volume"] / avg_vol
-    if vol_ratio < EMA_PULLBACK_VOL_RATIO:
-        return None
-
-    closes_1h = [c["close"] for c in candles_1h]
-    rsi_vals  = calc_rsi(closes_1h, RSI_PERIOD)
-    rsi_now   = rsi_vals[idx]
-    if direction == "LONG":
-        if rsi_now is None or rsi_now < EMA_PULLBACK_RSI_MIN:
-            return None
-
-    atrs = calc_atr(candles_1h, 14)
-    atr  = atrs[idx] if atrs[idx] is not None else 0.0
-    entry = close
-
-    if direction == "LONG":
-        stop_loss = min(prev["low"], ema30) - 1.0 * atr
-        target1   = entry + TP1_MULT * (entry - stop_loss)
-        target2   = entry + TP2_MULT * (entry - stop_loss)
-    else:
-        stop_loss = max(prev["high"], ema30) + 1.0 * atr
-        target1   = entry - TP1_MULT * (stop_loss - entry)
-        target2   = entry - TP2_MULT * (stop_loss - entry)
-
-    if direction == "LONG":
-        actual_touch_pct = abs(prev["low"] - ema30_p) / ema30_p * 100
-    else:
-        actual_touch_pct = abs(prev["high"] - ema30_p) / ema30_p * 100
-
-    conditions = [
-        {"name": "4H EMA200 大方向",       "value": "多頭" if direction == "LONG" else "空頭"},
-        {"name": "4H ADX 趨勢強度",        "value": f"{adx_now:.1f} ≥ {ADX_4H_MIN}"},
-        {"name": "4H RSI 動能區間",        "value": f"{round(rsi_4h,1)} ∈ [{RSI_4H_LONG_MIN},{RSI_4H_LONG_MAX}]" if direction=="LONG" else f"{round(rsi_4h,1)} ∈ [{RSI_4H_SHORT_MIN},{RSI_4H_SHORT_MAX}]"},
-        {"name": "4H EMA15/30 短線排列",   "value": f"EMA15({'>' if direction=='LONG' else '<'})EMA30 通過"},
-        {"name": "4H EMA60 方向一致",      "value": "上升" if ema60_4h_rising else "下降"},
-        {"name": "1H EMA 排列",            "value": f"EMA15({'>' if direction=='LONG' else '<'})EMA30 通過"},
-        {"name": "1H EMA60 正確側",        "value": "通過"},
-        {"name": "前根觸碰 EMA30",         "value": f"{actual_touch_pct:.2f}% ≤ {touch_pct*100:.1f}%"},
-        {"name": "當根反彈確認",           "value": "陽線確認" if direction == "LONG" else "陰線確認"},
-        {"name": "量能",                   "value": f"{vol_ratio:.2f}× ≥ {EMA_PULLBACK_VOL_RATIO}×"},
-        {"name": "蠟燭實體比",             "value": f"{ratio*100:.0f}% ≥ {EMA_PULLBACK_BODY*100:.0f}%"},
-    ]
-
-    return {
-        "symbol":           symbol,
-        "direction":        direction,
-        "strategy":         "EMA_PULLBACK",
-        "convergence":      {"bandwidth": 0.0, "compression_bars": 0},
-        "confirm_1h":       {"body_ratio": ratio, "pullback_entry": ema30,
-                             "rsi": round(rsi_now, 1) if rsi_now else None},
-        "levels":           {"entry": entry, "stop_loss": stop_loss,
-                             "target1": target1, "target2": target2, "atr": atr},
-        "vol_ratio":        vol_ratio,
-        "ema200_clear":     True,
-        "candle_time_ms":   candles_1h[idx]["time"],
-        "conditions":       conditions,
-        "bonus_indicators": _calc_bonus_indicators(candles_1h, direction),
-    }
-
-
-# ─────────────────────────────────────────────────────────────
-# 策略三：結構突破回測
+# 策略二：結構突破回測
 # ─────────────────────────────────────────────────────────────
 
 def _scan_structure_breakout(
@@ -726,7 +556,7 @@ def scan_symbol(
     candles_1h: list[dict],
 ) -> dict | None:
     """
-    依序嘗試四種策略，任一通過即回傳結果 dict，全部失敗則回傳 None。
+    依序嘗試三種策略，任一通過即回傳結果 dict，全部失敗則回傳 None。
     """
     emas_4h = ema_snapshot(candles_4h)
     emas_1h = ema_snapshot(candles_1h)
@@ -736,7 +566,6 @@ def scan_symbol(
     for scan in (
         _scan_ema_convergence,
         _scan_squeeze_breakout,
-        _scan_ema_pullback,
         _scan_structure_breakout,
     ):
         result = scan(symbol, candles_4h, candles_1h, emas_4h, emas_1h)

@@ -14,7 +14,7 @@ Trade_Bot/
 │   │   └── services/
 │   │       ├── strategies/          # scanner.py + indicators.py
 │   │       ├── scoring/             # scorer.py（門檻 7.5）
-│   │       ├── backtest/            # engine.py（Regime Filter 對照）
+│   │       ├── backtest/            # engine.py（逐 4H Bar 模擬）
 │   │       ├── data_ingestion/      # Binance Futures K 線下載
 │   │       └── paper_trader.py
 │   ├── scheduler.py                 # 主排程迴圈（每 60 分鐘）

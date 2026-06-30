@@ -19,9 +19,9 @@
 
 | 模組 | 路徑 | 說明 |
 |---|---|---|
-| 策略 | `backend/app/services/strategies/` | EMA_CONVERGENCE / EMA_PULLBACK / STRUCTURE_BREAKOUT |
+| 策略 | `backend/app/services/strategies/` | EMA_CONVERGENCE / EMA_SQUEEZE_BREAKOUT / STRUCTURE_BREAKOUT |
 | 評分 | `backend/app/services/scoring/` | 0–10 分，達標門檻 7.5 |
-| 回測 | `backend/app/services/backtest/` | Regime Filter 對照，含 TP1/TP2 出場結構 |
+| 回測 | `backend/app/services/backtest/` | 逐 4H Bar 模擬，含 TP1/TP2 出場結構 |
 | 資料擷取 | `backend/app/services/data_ingestion/` | Binance Futures K 線下載（含本機快取） |
 | 紙上帳戶 | `backend/app/services/paper_trader.py` | 每筆風險 2%，最多 4 倉 |
 

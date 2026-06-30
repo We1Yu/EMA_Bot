@@ -6,7 +6,7 @@
 
 | 系統 | 交易所 | 週期 | 策略 | 掃描頻率 |
 |------|--------|------|------|----------|
-| Crypto Quant Platform（`backend/`）| Binance Futures | 4H / 1H | EMA 收斂突破 / EMA30 回測反彈 / 結構突破回測（策略 v7）| 每 60 分鐘 |
+| Crypto Quant Platform（`backend/`）| Binance Futures | 4H / 1H | EMA 收斂突破 / 4H 出量突破 / 結構突破回測（策略 v7）| 每 60 分鐘 |
 | EMA Scanner（`legacy/ema_scanner/`）| BingX | 4H / 1H | 同上（歷史封存，不再維護）| — |
 
 ---
@@ -107,7 +107,7 @@ API 文件：`http://localhost:8000/docs`
 
 | 方法 | 路徑 | 說明 |
 |------|------|------|
-| POST | `/api/scan/` | 觸發全市場掃描（背景執行，含 BTC Regime 過濾） |
+| POST | `/api/scan/` | 觸發全市場掃描（背景執行） |
 | GET | `/api/scan/status` | 查詢掃描任務狀態 |
 | GET | `/api/scan/btc-regime` | 查詢目前 BTC 4H Regime 狀態（EMA15 vs EMA60） |
 
@@ -147,8 +147,8 @@ python scheduler.py
 ### 開發進度
 
 - [x] 專案架構規劃
-- [x] 核心策略邏輯（EMA_CONVERGENCE / EMA_PULLBACK / STRUCTURE_BREAKOUT）
-- [x] 回測引擎（Regime Filter 對照）
+- [x] 核心策略邏輯（EMA_CONVERGENCE / EMA_SQUEEZE_BREAKOUT / STRUCTURE_BREAKOUT）
+- [x] 回測引擎（逐 4H Bar 模擬）
 - [x] Binance Futures K 線下載器（含本機快取）
 - [x] FastAPI 後端 API（帳戶 / 訊號 / 掃描 / 回測全路由補完）
 - [x] 容器化部署（Docker + docker-compose）
@@ -168,11 +168,7 @@ python scheduler.py
 - 在 4H K 線收盤時刻（UTC 00/04/08/12/16/20）額外立即觸發
 - 同一幣種 **4 小時** 內不重複推播
 
-### BTC Regime 濾網
-
-當 BTC 4H EMA15 < EMA60（空頭環境）時，**封鎖所有山寨幣多單**；BTC / ETH 主流幣不受此限制。
-
-### 三種策略
+### 進場策略
 
 **EMA_CONVERGENCE**（4H 主圖 + 1H 確認）
 
@@ -188,23 +184,6 @@ python scheduler.py
 | 1H K棒實體比 | ≥ 45% |
 
 停損：多單 = 收斂區域最低點 − 1.0 ATR；空單 = 最高點 + 1.0 ATR
-
-**EMA_PULLBACK**（1H 主圖）
-
-| 條件 | 說明 |
-|------|------|
-| 4H EMA200 大方向 | 多頭 / 空頭 |
-| 4H EMA60 方向 | 上升做多 / 下降做空 |
-| 4H RSI 動能 | 多單：RSI 46–76；空單：RSI 24–54 |
-| ADX | > 20（確認趨勢，排除震盪盤） |
-| 1H EMA 排列 | 多單：EMA15 > EMA30；空單：EMA15 < EMA30 |
-| 1H 收盤位置 | 在 EMA60 正確側 |
-| 前根觸碰 EMA30 | 主流幣距離 ≤ 0.7%；山寨幣距離 ≤ 1.2% |
-| 當根反彈確認 | 多單：陽線；空單：陰線 |
-| 量能 | ≥ 20 根均量 × 1.8 |
-| 1H RSI（多單）| ≥ 48（確認動能未死；空單免檢） |
-
-停損：多單 = min(前根低點, EMA30) − 1.0 ATR；空單 = max(前根高點, EMA30) + 1.0 ATR
 
 **STRUCTURE_BREAKOUT**（1H 結構突破回測）
 
@@ -246,20 +225,6 @@ python scheduler.py
 | | ≥ 60% | +0.5 |
 | EMA200 大方向通過 | — | +1.0 |
 | 1H EMA 穿越確認 | — | +1.0 |
-| 歐美盤加成（TWN 15–22 時）| — | +1.0 |
-
-**EMA_PULLBACK 評分：**
-
-| 項目 | 條件 | 得分 |
-|------|------|------|
-| 形態有效基礎分 | — | +3.0 |
-| 量能倍數 | ≥ 2.0× | +2.0 |
-| | ≥ 1.5× | +1.5 |
-| | ≥ 1.2× | +0.5 |
-| K棒實體比 | ≥ 75% | +2.0 |
-| | ≥ 65% | +1.5 |
-| | ≥ 55% | +0.5 |
-| EMA200 大方向通過 | — | +1.0 |
 | 歐美盤加成（TWN 15–22 時）| — | +1.0 |
 
 **STRUCTURE_BREAKOUT 評分：**

@@ -44,7 +44,7 @@ def convergence_result(
 
 
 def momentum_result(vol_ratio=2.0, body_ratio=0.75, ema200_clear=False,
-                    direction="LONG", bonus=None, strategy="EMA_PULLBACK"):
+                    direction="LONG", bonus=None, strategy="MOMENTUM_FALLBACK"):
     return {
         "strategy":   strategy,
         "direction":  direction,
@@ -59,18 +59,6 @@ def breakout_result(vol_ratio=2.5, body_ratio=0.75, ema200_clear=True,
                     direction="LONG", bonus=None):
     return {
         "strategy":   "STRUCTURE_BREAKOUT",
-        "direction":  direction,
-        "vol_ratio":  vol_ratio,
-        "confirm_1h": {"body_ratio": body_ratio},
-        "ema200_clear": ema200_clear,
-        "bonus_indicators": bonus or {},
-    }
-
-
-def ema60_bounce_result(vol_ratio=2.5, body_ratio=0.75, ema200_clear=True,
-                        direction="LONG", bonus=None):
-    return {
-        "strategy":   "EMA60_BOUNCE",
         "direction":  direction,
         "vol_ratio":  vol_ratio,
         "confirm_1h": {"body_ratio": body_ratio},
@@ -172,23 +160,7 @@ class TestStructureBreakout:
         assert sc == pytest.approx(7.0)
 
 
-# ── EMA60_BOUNCE / PINBAR_AT_EMA / EMA_CROSS_1H ──────────────────────────
-
-class TestEma60BounceScorer:
-    def test_base_score(self):
-        # base=4, vol>=2.5 → +2.5, body>=0.75 → +2, ema200 → +0.5 = 9.0
-        r  = ema60_bounce_result()
-        sc = score_setup(r, _MS_OUTSIDE_SESSION)
-        assert sc == pytest.approx(9.0)
-
-    def test_pinbar_at_ema_uses_same_scorer(self):
-        r = ema60_bounce_result()
-        r["strategy"] = "PINBAR_AT_EMA"
-        sc = score_setup(r, _MS_OUTSIDE_SESSION)
-        assert sc == pytest.approx(9.0)
-
-
-# ── EMA_PULLBACK（momentum 通用）────────────────────────────────────────
+# ── 通用動能 fallback 評分 ────────────────────────────────────────
 
 class TestMomentumScorer:
     def test_base_score_high_vol_body(self):

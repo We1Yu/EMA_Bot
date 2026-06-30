@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-StrategyLiteral = Literal["EMA_CONVERGENCE", "EMA_SQUEEZE_BREAKOUT", "EMA_PULLBACK", "STRUCTURE_BREAKOUT"]
+StrategyLiteral = Literal["EMA_CONVERGENCE", "EMA_SQUEEZE_BREAKOUT", "STRUCTURE_BREAKOUT"]
 DirectionLiteral = Literal["LONG", "SHORT"]
 
 

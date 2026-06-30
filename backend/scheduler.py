@@ -250,7 +250,6 @@ def _log_open_detail(result: dict, score: float) -> None:
     strat_map = {
         "EMA_CONVERGENCE":      "EMA收斂突破",
         "EMA_SQUEEZE_BREAKOUT": "4H出量突破",
-        "EMA_PULLBACK":         "EMA30回測",
         "STRUCTURE_BREAKOUT":   "結構突破回測",
     }
     strategy   = result.get("strategy", "?")
@@ -268,8 +267,6 @@ def _log_open_detail(result: dict, score: float) -> None:
     if strategy in ("EMA_CONVERGENCE", "EMA_SQUEEZE_BREAKOUT"):
         logger.info("│  帶寬=%.2f%% 壓縮%d根  量比=%.1f×  實體=%.0f%%",
                     conv["bandwidth"], conv["compression_bars"], vol, conf["body_ratio"] * 100)
-    elif strategy == "EMA_PULLBACK":
-        logger.info("│  回測EMA30後反彈確認  量比=%.1f×  實體=%.0f%%", vol, conf["body_ratio"] * 100)
     elif strategy == "STRUCTURE_BREAKOUT":
         logger.info("│  結構突破回測確認  量比=%.1f×  實體=%.0f%%", vol, conf["body_ratio"] * 100)
     logger.info("└%s", "─" * 60)

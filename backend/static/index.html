@@ -479,7 +479,6 @@
       <button class="fbtn active" onclick="setSigFilter('strategy','',this,'sig-strat-bar')">全部策略</button>
       <button class="fbtn" onclick="setSigFilter('strategy','EMA_CONVERGENCE',this,'sig-strat-bar')">EMA 收斂</button>
       <button class="fbtn" onclick="setSigFilter('strategy','EMA_SQUEEZE_BREAKOUT',this,'sig-strat-bar')">4H 出量突破</button>
-      <button class="fbtn" onclick="setSigFilter('strategy','EMA_PULLBACK',this,'sig-strat-bar')">EMA 回測</button>
       <button class="fbtn" onclick="setSigFilter('strategy','STRUCTURE_BREAKOUT',this,'sig-strat-bar')">結構突破</button>
     </div>
     <div class="filter-bar" id="sig-dir-bar">
@@ -615,7 +614,6 @@ function reasonTag(r) {
 const STRAT = {
   EMA_CONVERGENCE:     ["#a855f7", "EMA 收斂"],
   EMA_SQUEEZE_BREAKOUT:["#22c55e", "4H 出量突破"],
-  EMA_PULLBACK:        ["#3b82f6", "EMA 回測"],
   STRUCTURE_BREAKOUT:  ["#f97316", "結構突破"],
 };
 function stratChip(s) {
@@ -872,7 +870,6 @@ async function loadSignals() {
       ["📊", "總訊號",     stats.total ?? 0,                                 ""],
       ["🟣", "EMA 收斂",   stats.by_strategy?.EMA_CONVERGENCE  ?? 0,         ""],
       ["🟢", "4H 出量突破", stats.by_strategy?.EMA_SQUEEZE_BREAKOUT ?? 0,     ""],
-      ["🔵", "EMA 回測",   stats.by_strategy?.EMA_PULLBACK      ?? 0,         ""],
       ["🟠", "結構突破",   stats.by_strategy?.STRUCTURE_BREAKOUT ?? 0,        ""],
       ["▲",  "多單",       stats.by_direction?.LONG  ?? 0,                    "pos"],
       ["▼",  "空單",       stats.by_direction?.SHORT ?? 0,                    "neg"],
