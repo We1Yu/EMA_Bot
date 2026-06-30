@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.9.0] - 2026-06-30
+
+### 新增
+- **第四個策略 `EMA_SQUEEZE_BREAKOUT`（v8，純 4H 出量突破）**：與 `EMA_CONVERGENCE` 共用「收斂 + 4H 出量突破」偵測，但**不等 1H 確認**，改以 4H 突破當根實體比 ≥0.50 + 收盤方向把關，訊號更快更多
+  - `scorer.py` 新增 `_score_squeeze_breakout()`：與收斂同維度，但少了代表 1H 穿越確認的 +1.0 基礎分，門檻更嚴，自然只放行量能 / 實體 / 收斂最強的突破
+  - `schemas/signals.py`、`scheduler.py` 日誌、`static/index.html` 篩選列與統計同步支援新策略
+  - 回測（30 幣種 / 215 天）：v8 單策略 PF 1.71（全策略最高，8 筆 / 勝率 37.5%）
+
+### 移除
+- **BTC Regime Filter 與 Black Swan 濾網全部刪除**（使用者決定）：不再封鎖山寨多單，也不再因 BTC 暴跌封鎖新倉
+  - `scanner.py` `scan_symbol()` 簽名簡化為 `(symbol, candles_4h, candles_1h)`
+  - `indicators.py` 刪除 `is_btc_black_swan()`
+  - `scheduler.py` / `backtest/engine.py` / `backtest/walk_forward.py` / `api/scan.py` 同步移除濾網參數
+  - `engine.py` 回測由「有 / 無 Filter 對比」收斂為單純單跑（圖表與 `static/index.html` 對比面板一併簡化）
+  - `GET /api/scan/btc-regime` 端點保留，但改為純 BTC 4H 趨勢資訊顯示，不影響掃描 / 開倉
+  - 移除後回測（30 幣種）：訊號 48、勝率 30.4%、+$2,342、**PF 1.09**、maxDD 11.29%
+
+### 調整
+- **專案結構重組**：舊版 `ema_scanner/`（BingX）整批封存搬到 `legacy/ema_scanner/`，root 不再有 `ema_scanner/`
+  - `.gitignore` 路徑同步改為 `legacy/ema_scanner/*`，並新增忽略 `backend/app/services/backtest/reports/`（回測圖為產物）
+  - `README.md` / `docs/03_DIRECTORY_STRUCTURE.md` / `INSTALL.md` 路徑與目錄樹同步更新，移除已不存在的 `frontend/`、`scripts/` 佔位目錄
+
+### 提交紀錄
+- `a82bcb4` feat: remove regime/black-swan filters and add EMA_SQUEEZE_BREAKOUT strategy
+- `8af4e4e` chore: archive ema_scanner to legacy/ and update docs
+
+---
+
 ## [1.8.0] - 2026-06-18
 
 ### 新增
