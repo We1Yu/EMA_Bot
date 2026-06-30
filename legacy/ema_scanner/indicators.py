@@ -4,14 +4,20 @@
 """
 
 
-def calc_ema(closes: list[float], period: int) -> list[float | None]:
-    """以前 period 根的 SMA 作為種子，回傳長度與輸入相同（前 period-1 個值為 None）"""
+def calc_ema(closes: list[float], period: int) -> list[float]:
+    """
+    計算指數移動平均線
+    以前 N 根K線的 SMA 作為種子值
+    回傳長度與輸入相同（前 period-1 個值為 None）
+    """
     if len(closes) < period:
         return [None] * len(closes)
 
     multiplier = 2.0 / (period + 1)
-    result     = [None] * len(closes)
-    seed       = sum(closes[:period]) / period
+    result = [None] * len(closes)
+
+    # 種子：前 period 根的 SMA
+    seed = sum(closes[:period]) / period
     result[period - 1] = seed
 
     for i in range(period, len(closes)):
@@ -21,19 +27,25 @@ def calc_ema(closes: list[float], period: int) -> list[float | None]:
 
 
 def calc_atr(candles: list[dict], period: int = 14) -> list[float | None]:
-    """True Range 的 Wilder 平滑均值"""
+    """
+    計算真實波動幅度均值 (ATR)
+    candles 每筆需有 high / low / close
+    """
     if len(candles) < period + 1:
         return [None] * len(candles)
 
-    trs = [None]
+    # True Range
+    trs = [None]  # 第一根無前收
     for i in range(1, len(candles)):
-        high       = candles[i]["high"]
-        low        = candles[i]["low"]
+        high  = candles[i]["high"]
+        low   = candles[i]["low"]
         prev_close = candles[i - 1]["close"]
-        trs.append(max(high - low, abs(high - prev_close), abs(low - prev_close)))
+        tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
+        trs.append(tr)
 
-    result     = [None] * len(candles)
-    valid_trs  = [t for t in trs[1:period + 1] if t is not None]
+    result = [None] * len(candles)
+    # 初始 ATR = 前 period 個 TR 的 SMA
+    valid_trs = [t for t in trs[1:period + 1] if t is not None]
     if len(valid_trs) < period:
         return result
 
@@ -49,7 +61,9 @@ def calc_atr(candles: list[dict], period: int = 14) -> list[float | None]:
 
 
 def calc_bandwidth(ema15: float, ema30: float, ema45: float, ema60: float) -> float:
-    """短期 EMA 群帶寬（相對於 EMA60 的百分比）"""
+    """
+    計算短期 EMA 群帶寬（相對於 EMA60 的百分比）
+    """
     high = max(ema15, ema30, ema45, ema60)
     low  = min(ema15, ema30, ema45, ema60)
     if ema60 == 0:
@@ -58,7 +72,10 @@ def calc_bandwidth(ema15: float, ema30: float, ema45: float, ema60: float) -> fl
 
 
 def ema_snapshot(candles: list[dict]) -> dict | None:
-    """一次計算所有 EMA，回傳完整列表供相鄰 bar 比較"""
+    """
+    一次計算所有所需 EMA 並回傳最近幾根K線的快照
+    回傳 dict 包含各 EMA 的最新值列表（方便比較相鄰 bar）
+    """
     closes = [c["close"] for c in candles]
 
     e15  = calc_ema(closes, 15)
@@ -67,6 +84,7 @@ def ema_snapshot(candles: list[dict]) -> dict | None:
     e60  = calc_ema(closes, 60)
     e200 = calc_ema(closes, 200)
 
+    # EMA200 需要 200 根以上，短時間 K 線可能不足（不強制要求）
     idx = len(closes) - 1
     if any(v is None for v in [e15[idx], e30[idx], e45[idx], e60[idx]]):
         return None
@@ -81,12 +99,16 @@ def ema_snapshot(candles: list[dict]) -> dict | None:
 
 
 def calc_bollinger(
-    closes:   list[float],
-    period:   int   = 20,
+    closes: list[float],
+    period: int = 20,
     std_mult: float = 2.0,
 ) -> dict:
-    """Bollinger Bands，回傳 upper/middle/lower/width"""
-    n      = len(closes)
+    """
+    Bollinger Bands
+    回傳 {"upper": [...], "middle": [...], "lower": [...], "width": [...]}
+    width = (upper - lower) / middle × 100 (%)
+    """
+    n = len(closes)
     upper  = [None] * n
     middle = [None] * n
     lower  = [None] * n
@@ -103,11 +125,10 @@ def calc_bollinger(
 
 
 def calc_rsi(closes: list[float], period: int = 14) -> list[float | None]:
-    """相對強弱指標 RSI"""
+    """RSI（相對強弱指標）"""
     result = [None] * len(closes)
     if len(closes) <= period:
         return result
-
     gains  = [0.0] * len(closes)
     losses = [0.0] * len(closes)
     for i in range(1, len(closes)):
@@ -116,14 +137,12 @@ def calc_rsi(closes: list[float], period: int = 14) -> list[float | None]:
             gains[i] = diff
         else:
             losses[i] = -diff
-
     avg_gain = sum(gains[1:period + 1]) / period
     avg_loss = sum(losses[1:period + 1]) / period
     if avg_loss == 0:
         result[period] = 100.0
     else:
         result[period] = 100.0 - 100.0 / (1.0 + avg_gain / avg_loss)
-
     for i in range(period + 1, len(closes)):
         avg_gain = (avg_gain * (period - 1) + gains[i]) / period
         avg_loss = (avg_loss * (period - 1) + losses[i]) / period
@@ -131,24 +150,26 @@ def calc_rsi(closes: list[float], period: int = 14) -> list[float | None]:
             result[i] = 100.0
         else:
             result[i] = 100.0 - 100.0 / (1.0 + avg_gain / avg_loss)
-
     return result
 
 
 def calc_macd(
     closes: list[float],
-    fast:   int = 12,
-    slow:   int = 26,
+    fast: int = 12,
+    slow: int = 26,
     signal: int = 9,
 ) -> dict:
-    """MACD，回傳 macd/signal/histogram 列表"""
-    ema_fast  = calc_ema(closes, fast)
-    ema_slow  = calc_ema(closes, slow)
+    """
+    MACD 指標
+    回傳 {"macd": [...], "signal": [...], "histogram": [...]}，長度與 closes 相同，不足處為 None
+    """
+    ema_fast = calc_ema(closes, fast)
+    ema_slow = calc_ema(closes, slow)
     macd_line = [
         (f - s) if f is not None and s is not None else None
         for f, s in zip(ema_fast, ema_slow)
     ]
-    valid_idxs  = [i for i, v in enumerate(macd_line) if v is not None]
+    valid_idxs = [i for i, v in enumerate(macd_line) if v is not None]
     signal_line = [None] * len(closes)
     if len(valid_idxs) >= signal:
         macd_vals = [macd_line[i] for i in valid_idxs]
@@ -165,26 +186,27 @@ def calc_macd(
 def calc_adx(candles: list[dict], period: int = 14) -> list[float | None]:
     """
     Average Directional Index (ADX)
-    > 20 表示有方向性趨勢，< 20 表示盤整震盪
+    > 20 表示市場有方向性趨勢，< 20 表示盤整震盪
     """
-    n      = len(candles)
+    n = len(candles)
     result = [None] * n
     if n < period * 2 + 1:
         return result
 
     tr_arr  = [0.0] * n
-    pdm_arr = [0.0] * n
-    ndm_arr = [0.0] * n
+    pdm_arr = [0.0] * n   # +DM
+    ndm_arr = [0.0] * n   # -DM
 
     for i in range(1, n):
-        h, lo  = candles[i]["high"],   candles[i]["low"]
+        h, l   = candles[i]["high"],   candles[i]["low"]
         ph, pl = candles[i-1]["high"], candles[i-1]["low"]
         pc     = candles[i-1]["close"]
-        tr_arr[i]  = max(h - lo, abs(h - pc), abs(lo - pc))
-        up, down   = h - ph, pl - lo
+        tr_arr[i]  = max(h - l, abs(h - pc), abs(l - pc))
+        up, down   = h - ph, pl - l
         pdm_arr[i] = up   if (up > down   and up   > 0) else 0.0
         ndm_arr[i] = down if (down > up   and down > 0) else 0.0
 
+    # Wilder 平滑初始值（第 1~period 根的總和）
     s_tr  = sum(tr_arr[1:period + 1])
     s_pdm = sum(pdm_arr[1:period + 1])
     s_ndm = sum(ndm_arr[1:period + 1])
@@ -193,10 +215,10 @@ def calc_adx(candles: list[dict], period: int = 14) -> list[float | None]:
         if st == 0:
             return None
         pdi, ndi = 100 * sp / st, 100 * sn / st
-        denom    = pdi + ndi
+        denom = pdi + ndi
         return 100 * abs(pdi - ndi) / denom if denom else None
 
-    dx_arr         = [None] * n
+    dx_arr = [None] * n
     dx_arr[period] = _dx(s_pdm, s_ndm, s_tr)
 
     for i in range(period + 1, n):
@@ -205,13 +227,13 @@ def calc_adx(candles: list[dict], period: int = 14) -> list[float | None]:
         s_ndm = s_ndm - s_ndm / period + ndm_arr[i]
         dx_arr[i] = _dx(s_pdm, s_ndm, s_tr)
 
+    # ADX = DX 的 Wilder 平滑
     dx_end = period + period
     if dx_end > n:
         return result
     valid = [dx_arr[i] for i in range(period, dx_end) if dx_arr[i] is not None]
     if len(valid) < period:
         return result
-
     adx = sum(valid) / period
     result[dx_end - 1] = adx
     for i in range(dx_end, n):
@@ -223,8 +245,9 @@ def calc_adx(candles: list[dict], period: int = 14) -> list[float | None]:
 
 
 def body_ratio(candle: dict) -> float:
-    """蠟燭實體比例（實體 / 全影）"""
+    """計算蠟燭實體比例（實體 / 全影）"""
     total_range = candle["high"] - candle["low"]
     if total_range == 0:
         return 0.0
-    return abs(candle["close"] - candle["open"]) / total_range
+    body = abs(candle["close"] - candle["open"])
+    return body / total_range

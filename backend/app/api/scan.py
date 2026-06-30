@@ -56,11 +56,11 @@ def _get_btc_regime() -> tuple[bool, float | None, float | None]:
 
 @router.get("/btc-regime", response_model=BtcRegimeResponse)
 async def btc_regime():
-    """查詢目前 BTC 4H Regime Filter 狀態"""
+    """查詢目前 BTC 4H 趨勢狀態（純資訊，不影響掃描/開倉）"""
     is_bull, ema15, ema60 = _get_btc_regime()
     return {
         "is_bull":    is_bull,
-        "label":      "多頭" if is_bull else "空頭（山寨多單封鎖）",
+        "label":      "多頭" if is_bull else "空頭",
         "btc_ema15":  ema15,
         "btc_ema60":  ema60,
         "checked_at": datetime.now(TW_TZ).strftime("%Y/%m/%d %H:%M"),
@@ -88,9 +88,6 @@ async def trigger_scan():
 
     def _do():
         try:
-            # BTC Regime Filter
-            btc_regime_bull, btc_e15, btc_e60 = _get_btc_regime()
-
             symbols = get_contracts()
             results = []
 
@@ -99,7 +96,7 @@ async def trigger_scan():
                 c1 = get_klines(sym, "1h", KLINES_1H)
                 if not c4 or not c1:
                     continue
-                r = scan_symbol(sym, c4, c1, btc_regime_bull)
+                r = scan_symbol(sym, c4, c1)
                 if not r:
                     continue
                 score = score_setup(r, r.get("candle_time_ms"))
@@ -156,13 +153,10 @@ async def trigger_scan():
 
             with _lock:
                 _task.update(running=False, result={
-                    "found":          len(results),
-                    "opened":         opened,
-                    "signals":        results,
-                    "btc_regime_bull": btc_regime_bull,
-                    "btc_ema15":      btc_e15,
-                    "btc_ema60":      btc_e60,
-                    "scanned_at":     datetime.now(TW_TZ).strftime("%Y/%m/%d %H:%M"),
+                    "found":      len(results),
+                    "opened":     opened,
+                    "signals":    results,
+                    "scanned_at": datetime.now(TW_TZ).strftime("%Y/%m/%d %H:%M"),
                 })
         except Exception as exc:
             with _lock:

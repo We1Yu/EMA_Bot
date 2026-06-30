@@ -478,6 +478,7 @@
     <div class="filter-bar" id="sig-strat-bar">
       <button class="fbtn active" onclick="setSigFilter('strategy','',this,'sig-strat-bar')">全部策略</button>
       <button class="fbtn" onclick="setSigFilter('strategy','EMA_CONVERGENCE',this,'sig-strat-bar')">EMA 收斂</button>
+      <button class="fbtn" onclick="setSigFilter('strategy','EMA_SQUEEZE_BREAKOUT',this,'sig-strat-bar')">4H 出量突破</button>
       <button class="fbtn" onclick="setSigFilter('strategy','EMA_PULLBACK',this,'sig-strat-bar')">EMA 回測</button>
       <button class="fbtn" onclick="setSigFilter('strategy','STRUCTURE_BREAKOUT',this,'sig-strat-bar')">結構突破</button>
     </div>
@@ -516,12 +517,12 @@
     <div class="regime-card" id="scan-regime-card">
       <div class="regime-icon" id="scan-regime-ico">⬜</div>
       <div>
-        <div class="lbl">BTC 4H Regime Filter</div>
+        <div class="lbl">BTC 4H 趨勢</div>
         <div class="val" id="scan-regime-val">載入中...</div>
         <div class="emas" id="scan-regime-emas"></div>
       </div>
       <div class="hint" style="color:var(--muted);font-size:.78em">
-        空頭環境（EMA15 &lt; EMA60）封鎖所有<br>山寨幣多單；BTC / ETH 不受限。
+        僅供參考的市場背景<br>（不影響掃描與開倉）。
       </div>
     </div>
 
@@ -558,8 +559,8 @@
   <div class="page" id="page-backtest">
     <div class="page-header">
       <div>
-        <div class="page-title">Regime Filter 回測</div>
-        <div class="page-sub">逐 4H Bar 模擬，比較有 / 無 BTC Regime Filter 的勝率與損益差異</div>
+        <div class="page-title">策略回測</div>
+        <div class="page-sub">逐 4H Bar 模擬，輸出勝率、獲利因子與資金曲線</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px">
         <label style="font-size:.82em;color:var(--muted);display:flex;align-items:center;gap:6px">
@@ -612,9 +613,10 @@ function reasonTag(r) {
   return `<span class="tag tag-${r || "套保"}">${r}</span>`;
 }
 const STRAT = {
-  EMA_CONVERGENCE:   ["#a855f7", "EMA 收斂"],
-  EMA_PULLBACK:      ["#3b82f6", "EMA 回測"],
-  STRUCTURE_BREAKOUT:["#f97316", "結構突破"],
+  EMA_CONVERGENCE:     ["#a855f7", "EMA 收斂"],
+  EMA_SQUEEZE_BREAKOUT:["#22c55e", "4H 出量突破"],
+  EMA_PULLBACK:        ["#3b82f6", "EMA 回測"],
+  STRUCTURE_BREAKOUT:  ["#f97316", "結構突破"],
 };
 function stratChip(s) {
   const [c, l] = STRAT[s] || ["#64748b", s || "—"];
@@ -869,6 +871,7 @@ async function loadSignals() {
     document.getElementById("sig-stat-grid").innerHTML = [
       ["📊", "總訊號",     stats.total ?? 0,                                 ""],
       ["🟣", "EMA 收斂",   stats.by_strategy?.EMA_CONVERGENCE  ?? 0,         ""],
+      ["🟢", "4H 出量突破", stats.by_strategy?.EMA_SQUEEZE_BREAKOUT ?? 0,     ""],
       ["🔵", "EMA 回測",   stats.by_strategy?.EMA_PULLBACK      ?? 0,         ""],
       ["🟠", "結構突破",   stats.by_strategy?.STRUCTURE_BREAKOUT ?? 0,        ""],
       ["▲",  "多單",       stats.by_direction?.LONG  ?? 0,                    "pos"],
@@ -937,8 +940,7 @@ async function triggerScan() {
       if (st.error) { toast("掃描錯誤：" + st.error, "err"); return; }
 
       const res = st.result || {};
-      const regime = res.btc_regime_bull ? "多頭" : "空頭（山寨多單封鎖）";
-      toast(`掃描完成 · Regime: ${regime} · 達標 ${res.found ?? 0} 個 · 新開倉 ${res.opened ?? 0} 筆`, "ok", 6000);
+      toast(`掃描完成 · 達標 ${res.found ?? 0} 個 · 新開倉 ${res.opened ?? 0} 筆`, "ok", 6000);
 
       const sigs = res.signals || [];
       const sec = document.getElementById("scan-result-sec");
@@ -971,30 +973,24 @@ async function triggerScan() {
 //  Backtest
 // ══════════════════════════════════════════════
 function renderBtResults(r) {
-  const w  = r.with_filter    || {};
-  const wo = r.without_filter || {};
-  const dw  = r.win_rate_diff ?? 0;
-  const dp  = r.pnl_diff      ?? 0;
+  const s   = r.result || {};
+  const pnl = s.total_pnl ?? 0;
 
-  const summaryColor = dw >= 0 ? "var(--green)" : "var(--yellow)";
   document.getElementById("bt-results").innerHTML = `
-    <div class="action-card" style="border-color:${summaryColor}33;background:${summaryColor}08;margin-bottom:16px">
+    <div class="action-card" style="border-color:${pnlCls(pnl) === 'pos' ? 'var(--green)' : 'var(--yellow)'}33;margin-bottom:16px">
       <div>
         <div class="title">回測摘要</div>
         <div class="desc">
           測試 <strong>${r.symbols_tested ?? "?"}</strong> 幣種 ·
-          模擬 <strong>${r.bars_simulated ?? "?"}</strong> 根 4H Bar ·
-          Regime 攔截 <strong>${r.blocked ?? 0}</strong> 個山寨多單
+          模擬 <strong>${r.bars_simulated ?? "?"}</strong> 根 4H Bar
         </div>
       </div>
       <div style="text-align:right;font-size:.9em">
-        <div>勝率差 <span style="color:${summaryColor};font-weight:700">${dw >= 0 ? "+" : ""}${fmt(dw, 1)}%</span></div>
-        <div style="margin-top:4px">損益差 <span class="${pnlCls(dp)}" style="font-weight:700">${pnlSign(dp)}$${fmt(dp)}</span></div>
+        <div>總損益 <span class="${pnlCls(pnl)}" style="font-weight:700">${pnlSign(pnl)}$${fmt(pnl)}</span></div>
       </div>
     </div>
     <div class="bt-compare">
-      ${mkBtPanel("有 Regime Filter ✅", w, r.signals_w)}
-      ${mkBtPanel("無 Regime Filter", wo, r.signals_wo)}
+      ${mkBtPanel("策略回測", s, r.signals)}
     </div>`;
   document.getElementById("bt-results").style.display = "block";
 }

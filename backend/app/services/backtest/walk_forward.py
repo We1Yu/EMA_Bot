@@ -17,7 +17,6 @@ from pathlib import Path
 
 from app.services.data_ingestion.binance import get_contracts, get_klines
 from app.services.data_ingestion.fetch_data import load as load_cached, KLINES_CACHE_DIR
-from app.services.strategies.indicators import ema_snapshot, is_btc_black_swan
 from app.services.strategies.scanner import scan_symbol
 from app.services.scoring.scorer import score_setup, passes_threshold
 from app.services.paper_trader import PaperTrader
@@ -63,23 +62,17 @@ def _stat_line(label: str, s: dict, sig: int) -> str:
 
 def _simulate(
     btc_4h:    list[dict],
-    btc_emas:  dict,
     sym_data:  dict[str, dict],
     start_bar: int,
     end_bar:   int,
 ) -> tuple[PaperTrader, int]:
-    """在 [start_bar, end_bar) 範圍內模擬 v7 策略（有 Regime Filter）。"""
+    """在 [start_bar, end_bar) 範圍內模擬策略。"""
     trader    = PaperTrader(INIT_BAL)
     sig_count = 0
 
     for bar_idx in range(start_bar, end_bar):
         bar_open_ms  = btc_4h[bar_idx]["time"]
         bar_close_ms = bar_open_ms + 4 * 3600 * 1000
-
-        e15 = btc_emas["ema15"][bar_idx]
-        e60 = btc_emas["ema60"][bar_idx]
-        regime     = (e15 > e60) if (e15 is not None and e60 is not None) else True
-        black_swan = is_btc_black_swan(btc_4h[max(0, bar_idx - 2): bar_idx + 1])
 
         signals:     list[tuple] = []
         latest_bars: dict[str, dict] = {}
@@ -98,7 +91,7 @@ def _simulate(
             if len(c1h_use) < 60:
                 continue
 
-            res = scan_symbol(sym, c4h_use, c1h_use, regime, black_swan)
+            res = scan_symbol(sym, c4h_use, c1h_use)
             if res:
                 sc = score_setup(res, bar_open_ms)
                 if passes_threshold(sc):
@@ -264,7 +257,6 @@ def run_walk_forward(
         logger.error("BTC 資料不足：需 %d 根，實際 %d 根", min_needed, len(btc_4h))
         return {"error": f"BTC 資料不足（需 {min_needed} 根，實際 {len(btc_4h)} 根）"}
 
-    btc_emas = ema_snapshot(btc_4h)
     n_bars   = len(btc_4h)
     logger.info("      %d 根  %s → %s",
                 n_bars, _fmt_date(btc_4h[0]["time"]), _fmt_date(btc_4h[-1]["time"]))
@@ -308,8 +300,8 @@ def run_walk_forward(
         logger.info("─" * 62)
         logger.info("窗口 W%d   IS: %s  OOS: %s", w_idx, is_period, oos_period)
 
-        trader_is,  sig_is  = _simulate(btc_4h, btc_emas, sym_data, is_s, is_e)
-        trader_oos, sig_oos = _simulate(btc_4h, btc_emas, sym_data, oos_s, oos_e)
+        trader_is,  sig_is  = _simulate(btc_4h, sym_data, is_s, is_e)
+        trader_oos, sig_oos = _simulate(btc_4h, sym_data, oos_s, oos_e)
 
         s_is  = trader_is.get_stats()
         s_oos = trader_oos.get_stats()

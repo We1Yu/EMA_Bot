@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import BaseModel
 
 
@@ -31,9 +29,6 @@ class ScanResult(BaseModel):
     found: int
     opened: int
     signals: list[ScanSignalItem]
-    btc_regime_bull: bool
-    btc_ema15: float | None = None
-    btc_ema60: float | None = None
     scanned_at: str
 
 
