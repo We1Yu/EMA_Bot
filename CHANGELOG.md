@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.10.0] - 2026-06-30
+
+### 移除
+- **刪除 `EMA_PULLBACK` 策略**：回測獲利因子 0.79（四策略中唯一 < 1.0，虧損），且訊號量最大（22 筆），是整體組合的主要拖累
+  - `scanner.py` 刪除 `_scan_ema_pullback()` 函式、`EMA_PULLBACK_*` 6 個參數、`scan_symbol` dispatch 條目，策略收斂為三種（EMA_CONVERGENCE / EMA_SQUEEZE_BREAKOUT / STRUCTURE_BREAKOUT）
+  - `scheduler.py` 移除 EMA_PULLBACK 開倉日誌分支與策略名稱對照
+  - `schemas/signals.py` `StrategyLiteral` 移除 `EMA_PULLBACK`
+  - `static/index.html` 移除 EMA_PULLBACK 篩選按鈕、色票與統計格
+
+### 清理
+- **死碼移除**：
+  - `scorer.py` 刪除 `_score_ema60_bounce()` 與其 dispatch 分支（`PINBAR_AT_EMA` / `EMA_CROSS_1H` / `EMA60_BOUNCE` 皆為掃描器從未產生的策略）
+  - `scanner.py` 刪除「EMA60_BOUNCE 參數（停用中）」整組未被引用的常數（`PINBAR_EMA30_TOUCH_PCT`、`EMA60_TOUCH_PCT`、`EMA60_VOL_RATIO`、`EMA60_BODY`）
+  - `tests/test_scorer.py` 移除對應的 `TestEma60BounceScorer` 測試與 helper
+- **文件同步**：清掉 README / docs 殘留的舊「BTC Regime 濾網」過濾描述（過濾功能已於 v1.9.0 移除，`/api/scan/btc-regime` 僅保留為資訊顯示）
+
+### 提交紀錄
+- `1e9540a` refactor: remove EMA_PULLBACK strategy and clean up dead code
+
+---
+
 ## [1.9.0] - 2026-06-30
 
 ### 新增
