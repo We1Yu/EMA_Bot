@@ -42,7 +42,7 @@ pip install -r crypto_screener/requirements.txt
 如果同時要使用 EMA Scanner：
 
 ```
-pip install -r ema_scanner/requirements.txt
+pip install -r legacy/ema_scanner/requirements.txt
 ```
 
 ---

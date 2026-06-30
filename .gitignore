@@ -1,21 +1,24 @@
-# K 線快取與交易紀錄（執行時產生）
-ema_scanner/data/
-ema_scanner/trade_records/
-ema_scanner/sessions/
+# K 線快取與交易紀錄（執行時產生，legacy 封存版）
+legacy/ema_scanner/data/
+legacy/ema_scanner/trade_records/
+legacy/ema_scanner/sessions/
 
 # Crypto Quant Platform 執行期資料
 backend/data/
 backend/trade_records/
 
-# 狀態與日誌（含個人資料）
-ema_scanner/state.json
-ema_scanner/bot_state.json
-ema_scanner/paper_account.json
-ema_scanner/signals_log.json
-ema_scanner/signals_history.jsonl
-ema_scanner/trade_history.csv
-ema_scanner/equity_history.jsonl
-ema_scanner/*.log
+# 回測產生的圖表（執行時產生）
+backend/app/services/backtest/reports/
+
+# 狀態與日誌（含個人資料，legacy 封存版）
+legacy/ema_scanner/state.json
+legacy/ema_scanner/bot_state.json
+legacy/ema_scanner/paper_account.json
+legacy/ema_scanner/signals_log.json
+legacy/ema_scanner/signals_history.jsonl
+legacy/ema_scanner/trade_history.csv
+legacy/ema_scanner/equity_history.jsonl
+legacy/ema_scanner/*.log
 *.log
 logs/
 

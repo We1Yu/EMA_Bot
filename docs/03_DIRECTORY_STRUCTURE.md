@@ -28,20 +28,13 @@ Trade_Bot/
 │       ├── trade_history.csv
 │       └── trade_records/
 │
-├── ema_scanner/                     # 原版（BingX，歷史參考，不再主動維護）
-│   ├── main.py
-│   ├── web_app.py                   # Flask 儀表板（port 5001）
-│   ├── scanner.py / scorer.py / indicators.py
-│   ├── paper_trader.py / backtest_regime.py
-│   └── templates/index.html
-│
-├── frontend/                        # 前端儀表板（Phase 3，開發中）
-│   └── src/
-│       ├── components/              # 可重用 UI 元件
-│       ├── pages/                   # Dashboard、回測詳情
-│       ├── hooks/                   # 自訂 React hooks
-│       ├── services/                # API 呼叫封裝
-│       └── types/                   # TypeScript 型別定義
+├── legacy/
+│   └── ema_scanner/                 # 原版（BingX，歷史封存，不再主動維護）
+│       ├── main.py
+│       ├── web_app.py               # Flask 儀表板（port 5001）
+│       ├── scanner.py / scorer.py / indicators.py
+│       ├── paper_trader.py / backtest_regime.py
+│       └── templates/index.html
 │
 ├── docs/                            # 規劃與架構文件
 │   ├── 00_PROJECT_OVERVIEW.md
@@ -49,7 +42,6 @@ Trade_Bot/
 │   ├── 02_DATABASE_SCHEMA.md
 │   └── 03_DIRECTORY_STRUCTURE.md   # 本檔案
 │
-├── scripts/                         # 輔助腳本
 ├── docker-compose.yml               # 後端一鍵啟動
 ├── README.md                        # 主文件
 ├── CHANGELOG.md                     # 版本歷程

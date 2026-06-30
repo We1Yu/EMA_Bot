@@ -6,8 +6,8 @@
 
 | 系統 | 交易所 | 週期 | 策略 | 掃描頻率 |
 |------|--------|------|------|----------|
-| EMA Scanner（`ema_scanner/`）| BingX | 4H / 1H | EMA 收斂突破 / EMA30 回測反彈 / 結構突破回測 | 每 60 分鐘 |
-| Crypto Quant Platform（`backend/`）| Binance Futures | 4H / 1H | 同上（策略 v7）| 每 60 分鐘 |
+| Crypto Quant Platform（`backend/`）| Binance Futures | 4H / 1H | EMA 收斂突破 / EMA30 回測反彈 / 結構突破回測（策略 v7）| 每 60 分鐘 |
+| EMA Scanner（`legacy/ema_scanner/`）| BingX | 4H / 1H | 同上（歷史封存，不再維護）| — |
 
 ---
 
@@ -43,12 +43,13 @@ Trade_Bot/
 │   ├── Dockerfile
 │   ├── static/index.html            # 網頁儀表板（Chart.js，由 FastAPI 提供服務）
 │   └── data/                        # 執行期資料（gitignore）
-├── ema_scanner/                     # 原版（BingX，歷史參考，不再主動維護）
-│   ├── main.py
-│   ├── web_app.py                   # Flask 儀表板（port 5001）
-│   ├── scanner.py / scorer.py / indicators.py
-│   ├── paper_trader.py / backtest_regime.py
-│   └── templates/index.html
+├── legacy/
+│   └── ema_scanner/                 # 原版（BingX，歷史封存，不再主動維護）
+│       ├── main.py
+│       ├── web_app.py               # Flask 儀表板（port 5001）
+│       ├── scanner.py / scorer.py / indicators.py
+│       ├── paper_trader.py / backtest_regime.py
+│       └── templates/index.html
 ├── docs/                            # 規劃與架構文件
 └── docker-compose.yml
 ```
@@ -318,9 +319,9 @@ python scheduler.py
 
 ### 環境變數
 
-機密資訊透過環境變數傳入，不寫入原始碼。在 `ema_scanner/` 目錄建立 `.env` 檔案（`.gitignore` 已排除）：
+機密資訊透過環境變數傳入，不寫入原始碼。在 `legacy/ema_scanner/` 目錄建立 `.env` 檔案（`.gitignore` 已排除）：
 
-**`ema_scanner/.env`**
+**`legacy/ema_scanner/.env`**
 ```
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 ```
@@ -331,7 +332,7 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 
 ## 資料檔案
 
-資料目錄：`backend/data/`（Crypto Quant Platform）和 `ema_scanner/`（EMA Scanner）
+資料目錄：`backend/data/`（Crypto Quant Platform）和 `legacy/ema_scanner/`（EMA Scanner，已封存）
 
 | 檔案 | 系統 | 內容 |
 |------|------|------|
@@ -342,6 +343,6 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 | `backend/data/signals_history.jsonl` | CQP | 所有達標訊號完整歷史 |
 | `backend/data/signals_log.json` | CQP | 最新 300 筆訊號快取（API 用） |
 | `backend/data/trade_records/` | CQP | 逐筆平倉紀錄 + 關機 Excel 報告 |
-| `ema_scanner/paper_account.json` | EMA | 紙上帳戶即時狀態 |
-| `ema_scanner/state.json` | EMA | 最新掃描狀態（供儀表板讀取） |
-| `ema_scanner/trade_records/` | EMA | 每次 session 結束後自動歸檔的 Excel |
+| `legacy/ema_scanner/paper_account.json` | EMA | 紙上帳戶即時狀態 |
+| `legacy/ema_scanner/state.json` | EMA | 最新掃描狀態（供儀表板讀取） |
+| `legacy/ema_scanner/trade_records/` | EMA | 每次 session 結束後自動歸檔的 Excel |
